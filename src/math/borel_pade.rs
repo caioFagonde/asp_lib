@@ -171,7 +171,7 @@ pub fn robust_pade(coeffs: &[Complex<f64>]) -> (Vec<Complex<f64>>, Vec<Complex<f
 
     // Build the ((m+1) × (m+1)) Toeplitz matrix T (padded with zero row for square SVD)
     let mut t = DMatrix::<Complex<f64>>::zeros(m + 1, m + 1);
-    for i in 0..m {
+    for i in 0..=m {
         for j in 0..=m {
             let idx = l as isize + 1 + i as isize - j as isize;
             if idx >= 0 && (idx as usize) < coeffs.len() {
