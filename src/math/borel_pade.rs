@@ -49,7 +49,6 @@ pub fn robust_pade(coeffs: &[Complex<f64>]) -> (Vec<Complex<f64>>, Vec<Complex<f
     let m = n / 2;
     let l = n - m;
 
-    // Pad to (m+1) x (m+1) to ensure full V^T matrix from SVD
     let mut t = DMatrix::<Complex<f64>>::zeros(m + 1, m + 1);
     for i in 0..m {
         for j in 0..=m {
@@ -83,10 +82,20 @@ pub fn robust_pade(coeffs: &[Complex<f64>]) -> (Vec<Complex<f64>>, Vec<Complex<f
 /// Robust Durand-Kerner complex polynomial root finder
 pub fn polynomial_roots(coeffs: &[Complex<f64>]) -> Vec<Complex<f64>> {
     let mut d = coeffs.len() - 1;
-    while d > 0 && coeffs[d].norm() < 1e-14 {
+    let max_c = coeffs.iter().map(|c| c.norm()).fold(0.0f64, f64::max);
+    if max_c == 0.0 { return vec![]; }
+    
+    // Drop numerical zeros at the highest degree to prevent division by zero
+    while d > 0 && coeffs[d].norm() < 1e-10 * max_c {
         d -= 1;
     }
     if d == 0 { return vec![]; }
+    
+    let lead = coeffs[d];
+    let mut norm_coeffs = Vec::with_capacity(d + 1);
+    for c in &coeffs[0..=d] {
+        norm_coeffs.push(*c / lead);
+    }
     
     let mut roots = Vec::with_capacity(d);
     let radius = 1.0;
@@ -104,12 +113,12 @@ pub fn polynomial_roots(coeffs: &[Complex<f64>]) -> Vec<Complex<f64>> {
             let z = roots[i];
             let mut p_val = Complex::new(0.0, 0.0);
             let mut z_pow = Complex::new(1.0, 0.0);
-            for &c in &coeffs[0..=d] {
+            for &c in &norm_coeffs {
                 p_val += c * z_pow;
                 z_pow *= z;
             }
             
-            let mut denominator = coeffs[d];
+            let mut denominator = norm_coeffs[d];
             for j in 0..d {
                 if i != j {
                     denominator *= z - roots[j];
@@ -118,8 +127,11 @@ pub fn polynomial_roots(coeffs: &[Complex<f64>]) -> Vec<Complex<f64>> {
             
             if denominator.norm() > 1e-14 {
                 let diff = p_val / denominator;
-                next_roots[i] -= diff;
-                max_diff = max_diff.max(diff.norm());
+                if diff.re.is_nan() || diff.im.is_nan() { continue; }
+                // Clamp step size to prevent wild jumps
+                let step = if diff.norm() > 10.0 { diff / diff.norm() * 10.0 } else { diff };
+                next_roots[i] -= step;
+                max_diff = max_diff.max(step.norm());
             }
         }
         roots = next_roots;
@@ -142,28 +154,43 @@ pub fn evaluate_rational(p: &[Complex<f64>], q: &[Complex<f64>], z: Complex<f64>
     num / den
 }
 
-pub fn borel_pade_laplace(raw_coeffs: &[f64], z_val: f64, n_gl: usize) -> f64 {
+/// Helper function to rigorously scale factorially divergent series
+/// down to O(1) magnitudes, preventing condition number collapse in f64 SVD.
+fn prepare_scaled_borel_coeffs(raw_coeffs: &[f64]) -> (Vec<Complex<f64>>, f64) {
     let mut borel_coeffs = Vec::with_capacity(raw_coeffs.len());
     let mut fact = 1.0;
     
     for (n, &c) in raw_coeffs.iter().enumerate() {
         if n > 0 { fact *= n as f64; }
-        borel_coeffs.push(Complex::new(c / fact, 0.0));
+        borel_coeffs.push(c / fact);
     }
 
-    let (p, q) = robust_pade(&borel_coeffs);
-    let (nodes, weights) = gauss_laguerre(n_gl);
+    let n_len = borel_coeffs.len();
+    let mut max_val = 0.0_f64;
+    let mut max_idx = 1;
     
-    let z = Complex::new(z_val, 0.0);
-    let mut sum = Complex::new(0.0, 0.0);
-    
-    for (x, w) in nodes.into_iter().zip(weights.into_iter()) {
-        let zeta = z * x; 
-        let r = evaluate_rational(&p, &q, zeta);
-        sum += r * w * z;
+    for i in (n_len / 2)..n_len {
+        let norm = borel_coeffs[i].abs();
+        if norm > max_val {
+            max_val = norm;
+            max_idx = i;
+        }
     }
     
-    sum.re
+    let lambda = if max_val > 0.0 && max_idx > 0 { 
+        max_val.powf(-1.0 / max_idx as f64) 
+    } else { 
+        1.0 
+    };
+    
+    let mut scaled_coeffs = Vec::with_capacity(n_len);
+    let mut current_scale = 1.0;
+    for &c in &borel_coeffs {
+        scaled_coeffs.push(Complex::new(c * current_scale, 0.0));
+        current_scale *= lambda;
+    }
+    
+    (scaled_coeffs, lambda)
 }
 
 pub fn filter_froissart_doublets(
@@ -176,7 +203,9 @@ pub fn filter_froissart_doublets(
         if let Some(idx) = q_roots.iter().enumerate()
             .filter(|(i, _)| !cancelled_q[*i])
             .min_by(|(_, a), (_, b)| {
-                (**a - p_root).norm().partial_cmp(&(**b - p_root).norm()).unwrap()
+                let da = (**a - p_root).norm();
+                let db = (**b - p_root).norm();
+                da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
             })
             .map(|(i, _)| i)
         {
@@ -192,14 +221,8 @@ pub fn filter_froissart_doublets(
 }
 
 pub fn extract_singularities(raw_coeffs: &[f64]) -> Vec<f64> {
-    let mut borel_coeffs = Vec::with_capacity(raw_coeffs.len());
-    let mut fact = 1.0;
-    
-    for (n, &c) in raw_coeffs.iter().enumerate() {
-        if n > 0 { fact *= n as f64; }
-        borel_coeffs.push(Complex::new(c / fact, 0.0));
-    }
-    let (p, q) = robust_pade(&borel_coeffs);
+    let (scaled_coeffs, lambda) = prepare_scaled_borel_coeffs(raw_coeffs);
+    let (p, q) = robust_pade(&scaled_coeffs);
     let p_roots = polynomial_roots(&p);
     let q_roots_raw = polynomial_roots(&q);
     
@@ -208,11 +231,30 @@ pub fn extract_singularities(raw_coeffs: &[f64]) -> Vec<f64> {
     let mut physical_poles = Vec::new();
     for root in q_roots_clean {
         if root.im.abs() < 1e-3 {
-            physical_poles.push(root.re);
+            // MATHEMTICAL FIX: True pole is root * lambda
+            physical_poles.push(root.re * lambda); 
         }
     }
     physical_poles.sort_by(|a, b| a.partial_cmp(b).unwrap());
     physical_poles
+}
+
+pub fn borel_pade_laplace(raw_coeffs: &[f64], z_val: f64, n_gl: usize) -> f64 {
+    let (scaled_coeffs, lambda) = prepare_scaled_borel_coeffs(raw_coeffs);
+    let (p, q) = robust_pade(&scaled_coeffs);
+    let (nodes, weights) = gauss_laguerre(n_gl);
+    
+    let z = Complex::new(z_val, 0.0);
+    let mut sum = Complex::new(0.0, 0.0);
+    
+    for (x, w) in nodes.into_iter().zip(weights.into_iter()) {
+        // MATHEMATICAL FIX: Evaluate at z * x / lambda
+        let zeta = z * x / lambda; 
+        let r = evaluate_rational(&p, &q, zeta);
+        sum += r * w * z;
+    }
+    
+    sum.re
 }
 
 pub fn lateral_borel_sum(
@@ -221,22 +263,15 @@ pub fn lateral_borel_sum(
     epsilon: f64, 
     n_gl: usize
 ) -> Complex<f64> {
-    let mut borel_coeffs = Vec::with_capacity(raw_coeffs.len());
-    let mut fact = 1.0;
-    
-    for (n, &c) in raw_coeffs.iter().enumerate() {
-        if n > 0 { fact *= n as f64; }
-        borel_coeffs.push(Complex::new(c / fact, 0.0));
-    }
-
-    let (p, q) = robust_pade(&borel_coeffs);
+    let (scaled_coeffs, lambda) = prepare_scaled_borel_coeffs(raw_coeffs);
+    let (p, q) = robust_pade(&scaled_coeffs);
     let (nodes, weights) = gauss_laguerre(n_gl);
     
     let z_eff = Complex::new(0.0, epsilon).exp() * z_val;
     let mut sum = Complex::new(0.0, 0.0);
     
     for (x, w) in nodes.into_iter().zip(weights.into_iter()) {
-        let zeta = z_eff * x; 
+        let zeta = z_eff * x / lambda; // SCALE THE EVALUATION POINT
         let r = evaluate_rational(&p, &q, zeta);
         sum += r * w * z_eff;
     }
@@ -259,20 +294,14 @@ pub fn median_resummation(
 }
 
 pub fn auto_median_resummation(raw_coeffs: &[f64], z_val: f64, n_gl: usize) -> f64 {
-    let mut borel_coeffs = Vec::with_capacity(raw_coeffs.len());
-    let mut fact = 1.0;
-    for (n, &c) in raw_coeffs.iter().enumerate() {
-        if n > 0 { fact *= n as f64; }
-        borel_coeffs.push(Complex::new(c / fact, 0.0));
-    }
-
-    let (_, q) = robust_pade(&borel_coeffs);
+    let (scaled_coeffs, lambda) = prepare_scaled_borel_coeffs(raw_coeffs);
+    let (_, q) = robust_pade(&scaled_coeffs);
     let q_roots = polynomial_roots(&q);
     
     let mut min_mag = f64::MAX;
     let mut dominant_angle = 0.0;
     for root in q_roots {
-        let mag = root.norm();
+        let mag = (root * lambda).norm(); // TRUE magnitude
         if mag > 1e-10 && mag < min_mag {
             min_mag = mag;
             dominant_angle = root.im.atan2(root.re);

@@ -132,6 +132,40 @@ fn cr3bp_jacobi(state: Vec<f64>, mu: f64) -> f64 {
 }
 
 #[pyfunction]
+#[pyo3(name = "estimate_s_from_t")]
+fn estimate_s_from_t_py(t_final: f64, x0: Vec<f64>, mu: f64) -> PyResult<f64> {
+    if x0.len() != 6 { return Err(PyValueError::new_err("x0 must have length 6")); }
+    let x0_arr = [x0[0], x0[1], x0[2], x0[3], x0[4], x0[5]];
+    Ok(physics::ks_cr3bp::estimate_s_from_t(t_final, &x0_arr, mu))
+}
+
+#[pyfunction]
+#[pyo3(name = "propagate_ks_cr3bp")]
+fn propagate_ks_cr3bp_py(
+    x0: Vec<f64>,
+    s_final: f64,
+    mu: f64,
+    n_cheb: Option<usize>,
+    tol: Option<f64>,
+) -> PyResult<KsCr3bpResultPy> {
+    if x0.len() != 6 { return Err(PyValueError::new_err("x0 must have length 6")); }
+    let mut cfg = PicardConfig::default();
+    if let Some(n) = n_cheb { cfg.n_cheb = n; }
+    if let Some(t) = tol { cfg.tol = t; }
+    
+    let x0_arr = [x0[0], x0[1], x0[2], x0[3], x0[4], x0[5]];
+    let res = physics::ks_cr3bp::propagate_ks_cr3bp(&x0_arr, s_final, mu, &cfg);
+    
+    Ok(KsCr3bpResultPy {
+        n_segments: res.n_segments,
+        jacobi_error: res.jacobi_error,
+        final_cartesian: res.final_cartesian.to_vec(),
+        nk_bound_max: res.nk_bound_max,
+        bernstein_rho_mean: res.bernstein_rho_mean,
+    })
+}
+
+#[pyfunction]
 fn diagnose_system(
     rhs: PyObject,
     x0: Vec<f64>,
@@ -415,6 +449,9 @@ fn _asp_core(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
 
     m.add_function(wrap_pyfunction!(propagate_cr3bp_fast, m)?)?;
     m.add_function(wrap_pyfunction!(cr3bp_jacobi, m)?)?;
+    m.add_function(wrap_pyfunction!(estimate_s_from_t_py, m)?)?;
+    m.add_function(wrap_pyfunction!(propagate_ks_cr3bp_py, m)?)?;
+    
     m.add_function(wrap_pyfunction!(diagnose_system, m)?)?;
     m.add_function(wrap_pyfunction!(ks_map_py, m)?)?;
     m.add_function(wrap_pyfunction!(ks_inverse_py, m)?)?;

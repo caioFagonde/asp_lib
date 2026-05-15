@@ -12,6 +12,8 @@ KsCr3bpResult = getattr(_core, "KsCr3bpResult", getattr(_core, "KsCr3bpResultPy"
 # FFI Function Mapping
 propagate_cr3bp_fast = _core.propagate_cr3bp_fast
 cr3bp_jacobi = _core.cr3bp_jacobi
+estimate_s_from_t = _core.estimate_s_from_t
+propagate_ks_cr3bp = _core.propagate_ks_cr3bp
 diagnose_system = _core.diagnose_system
 ks_map_py = _core.ks_map_py
 ks_inverse_py = _core.ks_inverse_py
@@ -42,6 +44,8 @@ __all__ = [
     "KsCr3bpResult",
     "propagate_cr3bp_fast",
     "cr3bp_jacobi",
+    "estimate_s_from_t",
+    "propagate_ks_cr3bp",
     "diagnose_system",
     "ks_map_py",
     "ks_inverse_py",
