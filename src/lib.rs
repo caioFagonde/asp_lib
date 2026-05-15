@@ -1,24 +1,23 @@
 // src/lib.rs
 //
 // PyO3 FFI layer for the ASP Computational Engine.
-// All #[pyclass] and #[pyfunction] definitions live here.
-// Pure Rust modules (math, physics, solvers) carry no PyO3 dependency.
 
 use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
 use ndarray::Array1;
+use numpy::ToPyArray;
 
 pub mod math;
 pub mod physics;
 pub mod solvers;
 pub mod resurgent_ps;
-pub mod picard_spec; // exposes chebyshev_fit / chebyshev_integrate to pymodule
+pub mod picard_spec; 
 
 use math::borel_pade;
 use solvers::picard::{PicardConfig, build_trajectory_result};
 
 // ---------------------------------------------------------------------------
-// PyO3 structs — defined here, NOT in picard.rs or any pure-Rust module
+// PyO3 structs
 // ---------------------------------------------------------------------------
 
 #[pyclass]
@@ -27,8 +26,6 @@ pub struct PropagationResultPy {
     #[pyo3(get)] pub final_state:     Vec<f64>,
     #[pyo3(get)] pub nk_bound_max:    f64,
     #[pyo3(get)] pub jacobi_error:    f64,
-    /// Flat (row-major) Chebyshev coefficient matrix of the final segment.
-    /// Shape: coeff_rows × coeff_cols. Passed to SC-EKF for continuous eval.
     #[pyo3(get)] pub last_seg_coeffs: Vec<f64>,
     #[pyo3(get)] pub coeff_rows:      usize,
     #[pyo3(get)] pub coeff_cols:      usize,
@@ -60,7 +57,6 @@ impl PicardConfigPy {
     }
 }
 
-/// Stateless solver handle. Propagation is done via free functions.
 #[pyclass]
 pub struct PicardSolverPy;
 
@@ -81,12 +77,9 @@ pub struct KsCr3bpResultPy {
 }
 
 // ---------------------------------------------------------------------------
-// Chebyshev primitives (Issue 3 — registered so test_core.py can call them)
+// Chebyshev primitives
 // ---------------------------------------------------------------------------
 
-/// Compute Chebyshev coefficients from function values at Lobatto nodes.
-/// Input: 1-D NumPy array of N+1 values at cos(πj/N) nodes, j=0..N.
-/// Output: 1-D array of N+1 Chebyshev coefficients.
 #[pyfunction]
 #[pyo3(name = "chebyshev_fit")]
 fn chebyshev_fit_py<'py>(
@@ -98,11 +91,6 @@ fn chebyshev_fit_py<'py>(
     numpy::PyArray1::from_slice(py, coeffs.as_slice().unwrap())
 }
 
-/// Integrate a Chebyshev coefficient series.
-/// u(σ) = u_init + (delta_s/2) ∫_{-1}^{σ} F(τ) dτ,
-/// evaluated at the N+1 Lobatto nodes.
-/// Input: 1-D coefficient array c of length N+1.
-/// Returns: 1-D coefficient array of length N+2 (one higher degree).
 #[pyfunction]
 #[pyo3(name = "chebyshev_integrate")]
 fn chebyshev_integrate_py<'py>(
@@ -203,25 +191,16 @@ fn extract_singularities_py(coeffs: Vec<f64>) -> Vec<f64> {
     borel_pade::extract_singularities(&coeffs)
 }
 
-/// Median resummation with user-supplied rotation angle ε.
 #[pyfunction]
 fn median_resummation_py(coeffs: Vec<f64>, z: f64, epsilon: f64, n_gl: usize) -> f64 {
     borel_pade::median_resummation(&coeffs, z, epsilon, n_gl)
 }
 
-/// Auto-ε median resummation (Theory Change 3).
-/// Detects the Stokes line direction from the leading Borel singularity
-/// and chooses ε automatically to straddle it.
 #[pyfunction]
 fn auto_median_resummation_py(coeffs: Vec<f64>, z: f64, n_gl: usize) -> f64 {
     borel_pade::auto_median_resummation(&coeffs, z, n_gl)
 }
 
-/// Resurgent Pseudoinverse — extracts the Hadamard finite part R₀ and the
-/// pole residue R₋₁ of a singular matrix function A(ε) at ε → 0.
-///
-/// Issue 1 fix: replaces the `from_shape_fn(py, (...), |...| ...)` placeholders
-/// with a correct nalgebra → ndarray → PyArray2 conversion path.
 #[pyfunction]
 #[pyo3(name = "resurgent_pseudoinverse")]
 fn resurgent_pseudoinverse_py(
@@ -232,26 +211,22 @@ fn resurgent_pseudoinverse_py(
     n_cheb: usize,
 ) -> PyResult<(Py<numpy::PyArray2<f64>>, Py<numpy::PyArray2<f64>>)> {
     let func = |eps: f64| -> nalgebra::DMatrix<f64> {
-        Python::with_gil(|py2| {
-            let result  = a_func.call1(py2, (eps,)).unwrap();
-            let pyarray: &numpy::PyArray2<f64> = result.extract(py2).unwrap();
-            let arr = unsafe { pyarray.as_array() };
-            let mut mat = nalgebra::DMatrix::zeros(arr.nrows(), arr.ncols());
-            for i in 0..arr.nrows() {
-                for j in 0..arr.ncols() { mat[(i, j)] = arr[[i, j]]; }
-            }
-            mat
-        })
+        let result = a_func.bind(py).call1((eps,)).unwrap();
+        let pyarray: numpy::PyReadonlyArray2<f64> = result.extract().unwrap();
+        let arr = pyarray.as_array();
+        let mut mat = nalgebra::DMatrix::zeros(arr.nrows(), arr.ncols());
+        for i in 0..arr.nrows() {
+            for j in 0..arr.ncols() { mat[(i, j)] = arr[[i, j]]; }
+        }
+        mat
     };
 
     let res = resurgent_ps::resurgent_pseudoinverse(func, eps_min, eps_max, n_cheb);
 
-    // Convert nalgebra DMatrix → PyArray2 with stable Py<> ownership
     let to_py = |m: &nalgebra::DMatrix<f64>| -> Py<numpy::PyArray2<f64>> {
         let (nr, nc) = (m.nrows(), m.ncols());
-        numpy::PyArray2::from_shape_fn(py, (nr, nc), |(i, j)| m[(i, j)])
-            .to_owned()
-            .into_py(py)
+        let arr = ndarray::Array2::from_shape_fn((nr, nc), |(i, j)| m[(i, j)]);
+        arr.to_pyarray(py).unbind()
     };
 
     Ok((to_py(&res.r_minus_1), to_py(&res.r_0)))
@@ -300,7 +275,6 @@ fn propagate_custom_c_abi_py(
         out
     };
 
-    // Box closures so they can be passed as `dyn Fn` to propagate_custom
     type DynRhs = Box<dyn Fn(&ndarray::Array2<f64>, &ndarray::Array1<f64>) -> ndarray::Array2<f64>>;
 
     let jac_boxed: Option<DynRhs> = jac_ptr_val.map(|ptr| {
@@ -314,8 +288,6 @@ fn propagate_custom_c_abi_py(
         b
     });
 
-    // Issue 5 fix: uk_closure returns F_c (addend to RHS), not a state projector.
-    // picard_segment will ADD this to the raw rhs output before integration.
     let uk_boxed: Option<DynRhs> = uk_ptr_val.map(|ptr| {
         let f: CAbiFunc = unsafe { std::mem::transmute(ptr as *const ()) };
         let b: DynRhs = Box::new(move |x: &ndarray::Array2<f64>, t: &ndarray::Array1<f64>| {
@@ -430,18 +402,15 @@ fn compute_apc_collocation_py(
 
 #[pymodule]
 fn _asp_core(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
-    // ── Classes ─────────────────────────────────────────────────────────────
     m.add_class::<PicardConfigPy>()?;
     m.add_class::<PicardSolverPy>()?;
     m.add_class::<PropagationResultPy>()?;
     m.add_class::<LiftDiagnosisPy>()?;
     m.add_class::<KsCr3bpResultPy>()?;
 
-    // ── Chebyshev primitives (Issue 3) ───────────────────────────────────────
     m.add_function(wrap_pyfunction!(chebyshev_fit_py, m)?)?;
     m.add_function(wrap_pyfunction!(chebyshev_integrate_py, m)?)?;
 
-    // ── Astrodynamics ────────────────────────────────────────────────────────
     m.add_function(wrap_pyfunction!(propagate_cr3bp_fast, m)?)?;
     m.add_function(wrap_pyfunction!(cr3bp_jacobi, m)?)?;
     m.add_function(wrap_pyfunction!(diagnose_system, m)?)?;
@@ -450,24 +419,16 @@ fn _asp_core(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(lc_map_py, m)?)?;
     m.add_function(wrap_pyfunction!(lc_inverse_py, m)?)?;
 
-    // ── Borel-Padé & Resurgence ──────────────────────────────────────────────
     m.add_function(wrap_pyfunction!(borel_pade_laplace_py, m)?)?;
     m.add_function(wrap_pyfunction!(extract_singularities_py, m)?)?;
     m.add_function(wrap_pyfunction!(resurgent_pseudoinverse_py, m)?)?;
     m.add_function(wrap_pyfunction!(median_resummation_py, m)?)?;
     m.add_function(wrap_pyfunction!(auto_median_resummation_py, m)?)?;
 
-    // ── JIT propagation ──────────────────────────────────────────────────────
     m.add_function(wrap_pyfunction!(propagate_custom_c_abi_py, m)?)?;
-
-    // ── Evaluation ───────────────────────────────────────────────────────────
     m.add_function(wrap_pyfunction!(evaluate_clenshaw_py, m)?)?;
-
-    // ── Constraints ──────────────────────────────────────────────────────────
     m.add_function(wrap_pyfunction!(compute_uk_force_py, m)?)?;
     m.add_function(wrap_pyfunction!(compute_uk_force_identity_py, m)?)?;
-
-    // ── APC ──────────────────────────────────────────────────────────────────
     m.add_function(wrap_pyfunction!(compute_apc_collocation_py, m)?)?;
 
     m.add("__version__", "0.1.0")?;

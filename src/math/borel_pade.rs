@@ -2,14 +2,10 @@
 //
 // The Borel-Padé-Laplace Engine
 // ======================================================================
-// Implements the rigorous singularity extraction and analytic continuation
-// of factorially divergent perturbation series (Thesis Chapter 2 & 3).
 
-use nalgebra::{ComplexField, DMatrix, DVector, SymmetricEigen};
+use nalgebra::{DMatrix, DVector, SymmetricEigen};
 use num_complex::Complex;
 
-/// Generates Gauss-Laguerre quadrature nodes and weights via the Golub-Welsch algorithm.
-/// Computes the eigenvalues and eigenvectors of the symmetric tridiagonal matrix.
 pub fn gauss_laguerre(n: usize) -> (Vec<f64>, Vec<f64>) {
     let mut diag = DVector::<f64>::zeros(n);
     let mut off_diag = DVector::<f64>::zeros(n - 1);
@@ -35,7 +31,7 @@ pub fn gauss_laguerre(n: usize) -> (Vec<f64>, Vec<f64>) {
         .map(|i| {
             let x = eigen.eigenvalues[i];
             let v = eigen.eigenvectors[(0, i)];
-            let w = v * v; // Weight is the square of the first component of the normalized eigenvector
+            let w = v * v;
             (x, w)
         })
         .collect();
@@ -48,14 +44,11 @@ pub fn gauss_laguerre(n: usize) -> (Vec<f64>, Vec<f64>) {
     (nodes, weights)
 }
 
-/// Computes the robust Padé approximant [L/M] using SVD on the Toeplitz matrix.
-/// Returns the coefficients of the numerator P and denominator Q.
 pub fn robust_pade(coeffs: &[Complex<f64>]) -> (Vec<Complex<f64>>, Vec<Complex<f64>>) {
     let n = coeffs.len() - 1;
     let m = n / 2;
     let l = n - m;
 
-    // Build the Toeplitz matrix for the system C * q = 0
     let mut t = DMatrix::<Complex<f64>>::zeros(m, m + 1);
     for i in 0..m {
         for j in 0..=m {
@@ -66,18 +59,14 @@ pub fn robust_pade(coeffs: &[Complex<f64>]) -> (Vec<Complex<f64>>, Vec<Complex<f
         }
     }
 
-    // Compute SVD to find the null space (the denominator coefficients q)
     let svd = t.svd(true, true);
     let v_t = svd.v_t.expect("SVD failed to compute V^T");
     
-    // The last row of V^T (which is V^H) corresponds to the smallest singular value.
-    // The null vector is the conjugate of this row.
     let mut q = Vec::with_capacity(m + 1);
     for j in 0..=m {
         q.push(v_t[(m, j)].conj());
     }
 
-    // Compute numerator coefficients p_k = sum_{j=0}^k c_{k-j} q_j
     let mut p = Vec::with_capacity(l + 1);
     for k in 0..=l {
         let mut sum = Complex::new(0.0, 0.0);
@@ -90,7 +79,7 @@ pub fn robust_pade(coeffs: &[Complex<f64>]) -> (Vec<Complex<f64>>, Vec<Complex<f
     (p, q)
 }
 
-/// Extracts the roots of a polynomial given its coefficients via the Companion Matrix.
+/// Robust Durand-Kerner complex polynomial root finder
 pub fn polynomial_roots(coeffs: &[Complex<f64>]) -> Vec<Complex<f64>> {
     let mut d = coeffs.len() - 1;
     while d > 0 && coeffs[d].norm() < 1e-14 {
@@ -98,20 +87,48 @@ pub fn polynomial_roots(coeffs: &[Complex<f64>]) -> Vec<Complex<f64>> {
     }
     if d == 0 { return vec![]; }
     
-    let lead = coeffs[d];
-    let mut comp = DMatrix::<Complex<f64>>::zeros(d, d);
-    
-    for i in 1..d {
-        comp[(i, i - 1)] = Complex::new(1.0, 0.0);
-    }
+    let mut roots = Vec::with_capacity(d);
+    let radius = 1.0;
+    let center = Complex::new(0.0, 0.0);
     for i in 0..d {
-        comp[(i, d - 1)] = -coeffs[i] / lead;
+        let angle = 2.0 * std::f64::consts::PI * (i as f64) / (d as f64) + 0.1;
+        roots.push(center + Complex::new(radius * angle.cos(), radius * angle.sin()));
     }
     
-    comp.complex_eigenvalues().into_iter().cloned().collect()
+    let max_iter = 2000;
+    for _ in 0..max_iter {
+        let mut max_diff = 0.0f64;
+        let mut next_roots = roots.clone();
+        for i in 0..d {
+            let z = roots[i];
+            let mut p_val = Complex::new(0.0, 0.0);
+            let mut z_pow = Complex::new(1.0, 0.0);
+            for &c in &coeffs[0..=d] {
+                p_val += c * z_pow;
+                z_pow *= z;
+            }
+            
+            let mut denominator = coeffs[d];
+            for j in 0..d {
+                if i != j {
+                    denominator *= z - roots[j];
+                }
+            }
+            
+            if denominator.norm() > 1e-14 {
+                let diff = p_val / denominator;
+                next_roots[i] -= diff;
+                max_diff = max_diff.max(diff.norm());
+            }
+        }
+        roots = next_roots;
+        if max_diff < 1e-12 {
+            break;
+        }
+    }
+    roots
 }
 
-/// Evaluates a rational function P(z)/Q(z)
 pub fn evaluate_rational(p: &[Complex<f64>], q: &[Complex<f64>], z: Complex<f64>) -> Complex<f64> {
     let mut num = Complex::new(0.0, 0.0);
     let mut den = Complex::new(0.0, 0.0);
@@ -124,8 +141,6 @@ pub fn evaluate_rational(p: &[Complex<f64>], q: &[Complex<f64>], z: Complex<f64>
     num / den
 }
 
-/// Executes the full Borel-Padé-Laplace resummation.
-/// Expects raw perturbative coefficients a_n. Internally converts to Borel coefficients b_n = a_n / n!.
 pub fn borel_pade_laplace(raw_coeffs: &[f64], z_val: f64, n_gl: usize) -> f64 {
     let mut borel_coeffs = Vec::with_capacity(raw_coeffs.len());
     let mut fact = 1.0;
@@ -141,7 +156,6 @@ pub fn borel_pade_laplace(raw_coeffs: &[f64], z_val: f64, n_gl: usize) -> f64 {
     let z = Complex::new(z_val, 0.0);
     let mut sum = Complex::new(0.0, 0.0);
     
-    // Laplace Integral: int_0^infty e^(-x) R(z*x) * z dx
     for (x, w) in nodes.into_iter().zip(weights.into_iter()) {
         let zeta = z * x; 
         let r = evaluate_rational(&p, &q, zeta);
@@ -156,18 +170,17 @@ pub fn filter_froissart_doublets(
     q_roots: &[Complex<f64>],
     delta: f64,
 ) -> Vec<Complex<f64>> {
-    // Greedy nearest-neighbor pole-zero cancellation
     let mut cancelled_q = vec![false; q_roots.len()];
     for &p_root in p_roots {
         if let Some(idx) = q_roots.iter().enumerate()
             .filter(|(i, _)| !cancelled_q[*i])
             .min_by(|(_, a), (_, b)| {
-                (a - p_root).norm().partial_cmp(&(b - p_root).norm()).unwrap()
+                (**a - p_root).norm().partial_cmp(&(**b - p_root).norm()).unwrap()
             })
             .map(|(i, _)| i)
         {
             if (q_roots[idx] - p_root).norm() < delta {
-                cancelled_q[idx] = true; // This pole cancels with a nearby zero
+                cancelled_q[idx] = true;
             }
         }
     }
@@ -189,7 +202,6 @@ pub fn extract_singularities(raw_coeffs: &[f64]) -> Vec<f64> {
     let p_roots = polynomial_roots(&p);
     let q_roots_raw = polynomial_roots(&q);
     
-    // Apply Froissart doublet removal before returning poles
     let q_roots_clean = filter_froissart_doublets(&p_roots, &q_roots_raw, 1e-3);
     
     let mut physical_poles = Vec::new();
@@ -202,9 +214,6 @@ pub fn extract_singularities(raw_coeffs: &[f64]) -> Vec<f64> {
     physical_poles
 }
 
-/// Computes the Lateral Borel Sum $\mathcal{S}^{\pm\epsilon}$.
-/// Rotates the Laplace integration contour by angle `epsilon` in the complex plane
-/// to avoid singularities lying directly on the Stokes line.
 pub fn lateral_borel_sum(
     raw_coeffs: &[f64], 
     z_val: f64, 
@@ -222,11 +231,9 @@ pub fn lateral_borel_sum(
     let (p, q) = robust_pade(&borel_coeffs);
     let (nodes, weights) = gauss_laguerre(n_gl);
     
-    // Complexify the coupling parameter: z_eff = z * e^{i * epsilon}
     let z_eff = Complex::new(0.0, epsilon).exp() * z_val;
     let mut sum = Complex::new(0.0, 0.0);
     
-    // Directional Laplace Integral: \int_0^\infty e^{-x} R(z_eff * x) * z_eff dx
     for (x, w) in nodes.into_iter().zip(weights.into_iter()) {
         let zeta = z_eff * x; 
         let r = evaluate_rational(&p, &q, zeta);
@@ -236,10 +243,6 @@ pub fn lateral_borel_sum(
     sum
 }
 
-/// Executes the Measure operator (\mathcal{M}).
-/// Computes the Median Resummation by taking the arithmetic mean of the 
-/// upper and lower lateral Borel sums, explicitly canceling the imaginary 
-/// ambiguities (instanton tunneling rates) to project onto the physical real line.
 pub fn median_resummation(
     raw_coeffs: &[f64], 
     z_val: f64, 
@@ -249,16 +252,11 @@ pub fn median_resummation(
     let s_plus = lateral_borel_sum(raw_coeffs, z_val, epsilon, n_gl);
     let s_minus = lateral_borel_sum(raw_coeffs, z_val, -epsilon, n_gl);
     
-    // The Cauchy Principal Value is the real part of the average.
-    // By definition of the Stokes automorphism, the imaginary parts are equal and opposite.
     let m_val = (s_plus + s_minus) / 2.0;
     
     m_val.re
 }
 
-/// Auto-ε median resummation (Theory Change 3).
-/// Detects the Stokes line direction from the leading Borel singularity
-/// and chooses ε automatically to straddle it.
 pub fn auto_median_resummation(raw_coeffs: &[f64], z_val: f64, n_gl: usize) -> f64 {
     let mut borel_coeffs = Vec::with_capacity(raw_coeffs.len());
     let mut fact = 1.0;
