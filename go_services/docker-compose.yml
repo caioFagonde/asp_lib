@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  orbit_dispatch:
+    build:
+      context: .
+      dockerfile: cmd/orbit_dispatch/Dockerfile
+    ports:
+      - "50051:50051"
+    networks:
+      - asp_net
+    environment:
+      - RUST_WORKER_URL=rust_worker:50052
+
+  # Future expansion: The headless Rust workers running the Picard solver
+  # rust_worker:
+  #   image: asp_rust_worker:latest
+  #   deploy:
+  #     replicas: 4
+  #   networks:
+  #     - asp_net
+
+networks:
+  asp_net:
+    driver: bridge

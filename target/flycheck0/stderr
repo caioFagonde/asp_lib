@@ -1,14 +1,100 @@
-   0.022371543s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint: stale: changed "/home/caion/Documentos/github/asp_lib/src/lib.rs"
-   0.022385118s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint:           (vs) "/home/caion/Documentos/github/asp_lib/target/debug/.fingerprint/asp_core-bf4938d5532fbb3d/dep-lib-asp_core"
-   0.022387437s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint:                FileTime { seconds: 1778851948, nanos: 617239814 } < FileTime { seconds: 1778853336, nanos: 70770358 }
-   0.022443163s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint: fingerprint dirty for asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib)/Check { test: false }/TargetInner { ..: lib_target("asp_core", ["cdylib"], "/home/caion/Documentos/github/asp_lib/src/lib.rs", Edition2021) }
-   0.022452439s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleItem(ChangedFile { reference: "/home/caion/Documentos/github/asp_lib/target/debug/.fingerprint/asp_core-bf4938d5532fbb3d/dep-lib-asp_core", reference_mtime: FileTime { seconds: 1778851948, nanos: 617239814 }, stale: "/home/caion/Documentos/github/asp_lib/src/lib.rs", stale_mtime: FileTime { seconds: 1778853336, nanos: 70770358 } }))
-   0.024451050s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint: stale: changed "/home/caion/Documentos/github/asp_lib/src/lib.rs"
-   0.024458841s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint:           (vs) "/home/caion/Documentos/github/asp_lib/target/debug/.fingerprint/asp_core-0651c403caf029a6/dep-test-lib-asp_core"
-   0.024461131s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint:                FileTime { seconds: 1778851948, nanos: 617239814 } < FileTime { seconds: 1778853336, nanos: 70770358 }
-   0.024487333s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint: fingerprint dirty for asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib)/Check { test: true }/TargetInner { ..: lib_target("asp_core", ["cdylib"], "/home/caion/Documentos/github/asp_lib/src/lib.rs", Edition2021) }
-   0.024494873s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleItem(ChangedFile { reference: "/home/caion/Documentos/github/asp_lib/target/debug/.fingerprint/asp_core-0651c403caf029a6/dep-test-lib-asp_core", reference_mtime: FileTime { seconds: 1778851948, nanos: 617239814 }, stale: "/home/caion/Documentos/github/asp_lib/src/lib.rs", stale_mtime: FileTime { seconds: 1778853336, nanos: 70770358 } }))
+warning: `[project]` is deprecated in favor of `[package]`
+warning: unused manifest key: build-system
+warning: unused manifest key: project.dependencies
+warning: unused manifest key: project.optional-dependencies
+warning: unused manifest key: project.requires-python
+warning: unused manifest key: tool
+   0.024678154s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint: fingerprint error for asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib)/Check { test: false }/TargetInner { ..: lib_target("asp_core", ["cdylib"], "/home/caion/Documentos/github/asp_lib/src/lib.rs", Edition2021) }
+   0.024697671s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/caion/Documentos/github/asp_lib/target/debug/.fingerprint/asp_core-4cb8324ea07e98a6/lib-asp_core`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: cargo_util::paths::read_bytes
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::_compare_old_fingerprint
+   3: cargo::core::compiler::fingerprint::prepare_target
+   4: cargo::core::compiler::compile
+   5: <cargo::core::compiler::build_runner::BuildRunner>::compile
+   6: cargo::ops::cargo_compile::compile_ws
+   7: cargo::ops::cargo_compile::compile_with_exec
+   8: cargo::ops::cargo_compile::compile
+   9: cargo::commands::check::exec
+  10: <cargo::cli::Exec>::exec
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+  13: std::rt::lang_start::<()>::{closure#0}
+  14: core::ops::function::impls::<impl core::ops::function::FnOnce<A> for &F>::call_once
+             at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library/core/src/ops/function.rs:287:21
+  15: std::panicking::catch_unwind::do_call
+             at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library/std/src/panicking.rs:581:40
+  16: std::panicking::catch_unwind
+             at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library/std/src/panicking.rs:544:19
+  17: std::panic::catch_unwind
+             at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library/std/src/panic.rs:359:14
+  18: std::rt::lang_start_internal::{{closure}}
+             at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library/std/src/rt.rs:175:24
+  19: std::panicking::catch_unwind::do_call
+             at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library/std/src/panicking.rs:581:40
+  20: std::panicking::catch_unwind
+             at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library/std/src/panicking.rs:544:19
+  21: std::panic::catch_unwind
+             at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library/std/src/panic.rs:359:14
+  22: std::rt::lang_start_internal
+             at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library/std/src/rt.rs:171:5
+  23: main
+  24: __libc_start_call_main
+             at ./csu/../sysdeps/nptl/libc_start_call_main.h:58:16
+  25: __libc_start_main_impl
+             at ./csu/../csu/libc-start.c:360:3
+  26: <unknown>
+   0.076844066s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint: fingerprint error for asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib)/Check { test: true }/TargetInner { ..: lib_target("asp_core", ["cdylib"], "/home/caion/Documentos/github/asp_lib/src/lib.rs", Edition2021) }
+   0.076859091s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/caion/Documentos/github/asp_lib/target/debug/.fingerprint/asp_core-2ce2cc3303e2dfb5/test-lib-asp_core`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: cargo_util::paths::read_bytes
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::_compare_old_fingerprint
+   3: cargo::core::compiler::fingerprint::prepare_target
+   4: cargo::core::compiler::compile
+   5: <cargo::core::compiler::build_runner::BuildRunner>::compile
+   6: cargo::ops::cargo_compile::compile_ws
+   7: cargo::ops::cargo_compile::compile_with_exec
+   8: cargo::ops::cargo_compile::compile
+   9: cargo::commands::check::exec
+  10: <cargo::cli::Exec>::exec
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+  13: std::rt::lang_start::<()>::{closure#0}
+  14: core::ops::function::impls::<impl core::ops::function::FnOnce<A> for &F>::call_once
+             at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library/core/src/ops/function.rs:287:21
+  15: std::panicking::catch_unwind::do_call
+             at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library/std/src/panicking.rs:581:40
+  16: std::panicking::catch_unwind
+             at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library/std/src/panicking.rs:544:19
+  17: std::panic::catch_unwind
+             at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library/std/src/panic.rs:359:14
+  18: std::rt::lang_start_internal::{{closure}}
+             at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library/std/src/rt.rs:175:24
+  19: std::panicking::catch_unwind::do_call
+             at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library/std/src/panicking.rs:581:40
+  20: std::panicking::catch_unwind
+             at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library/std/src/panicking.rs:544:19
+  21: std::panic::catch_unwind
+             at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library/std/src/panic.rs:359:14
+  22: std::rt::lang_start_internal
+             at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library/std/src/rt.rs:171:5
+  23: main
+  24: __libc_start_call_main
+             at ./csu/../sysdeps/nptl/libc_start_call_main.h:58:16
+  25: __libc_start_main_impl
+             at ./csu/../csu/libc-start.c:360:3
+  26: <unknown>
     Checking asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib)
-error: could not compile `asp_core` (lib) due to 21 previous errors; 6 warnings emitted
+error: could not compile `asp_core` (lib) due to 21 previous errors; 5 warnings emitted
 warning: build failed, waiting for other jobs to finish...
-error: could not compile `asp_core` (lib test) due to 22 previous errors; 7 warnings emitted
+error: could not compile `asp_core` (lib test) due to 22 previous errors; 6 warnings emitted

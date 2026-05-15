@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package asp.cluster;
+option go_package = "./pb";
+
+// Request to propagate a batch of initial conditions via the Spectral Picard solver
+message PropagateBatchRequest {
+    string job_id = 1;
+    repeated StateVector initial_states = 2;
+    double t_final = 3;
+    double mu = 4;
+    int32 n_cheb = 5;
+    double tolerance = 6;
+}
+
+message StateVector {
+    repeated double components = 1; // [x, y, z, vx, vy, vz]
+}
+
+// Response containing the certified endpoints and NK bounds
+message PropagateBatchResponse {
+    string job_id = 1;
+    repeated TrajectoryResult results = 2;
+}
+
+message TrajectoryResult {
+    repeated double final_state = 1;
+    double jacobi_error = 2;
+    double nk_bound = 3;
+    bool is_certified = 4;
+    int32 segments_used = 5;
+}
+
+service OrbitDispatch {
+    rpc PropagateBatch(PropagateBatchRequest) returns (PropagateBatchResponse);
+}
