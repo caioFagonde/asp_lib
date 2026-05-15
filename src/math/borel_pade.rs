@@ -175,3 +175,59 @@ pub fn extract_singularities(raw_coeffs: &[f64]) -> Vec<f64> {
     physical_poles.sort_by(|a, b| a.partial_cmp(b).unwrap());
     physical_poles
 }
+
+// src/math/borel_pade.rs (Additions)
+
+/// Computes the Lateral Borel Sum $\mathcal{S}^{\pm\epsilon}$.
+/// Rotates the Laplace integration contour by angle `epsilon` in the complex plane
+/// to avoid singularities lying directly on the Stokes line.
+pub fn lateral_borel_sum(
+    raw_coeffs: &[f64], 
+    z_val: f64, 
+    epsilon: f64, 
+    n_gl: usize
+) -> Complex<f64> {
+    let mut borel_coeffs = Vec::with_capacity(raw_coeffs.len());
+    let mut fact = 1.0;
+    
+    for (n, &c) in raw_coeffs.iter().enumerate() {
+        if n > 0 { fact *= n as f64; }
+        borel_coeffs.push(Complex::new(c / fact, 0.0));
+    }
+
+    let (p, q) = robust_pade(&borel_coeffs);
+    let (nodes, weights) = gauss_laguerre(n_gl);
+    
+    // Complexify the coupling parameter: z_eff = z * e^{i * epsilon}
+    let z_eff = Complex::new(0.0, epsilon).exp() * z_val;
+    let mut sum = Complex::new(0.0, 0.0);
+    
+    // Directional Laplace Integral: \int_0^\infty e^{-x} R(z_eff * x) * z_eff dx
+    for (x, w) in nodes.into_iter().zip(weights.into_iter()) {
+        let zeta = z_eff * x; 
+        let r = evaluate_rational(&p, &q, zeta);
+        sum += r * w * z_eff;
+    }
+    
+    sum
+}
+
+/// Executes the Measure operator (\mathcal{M}).
+/// Computes the Median Resummation by taking the arithmetic mean of the 
+/// upper and lower lateral Borel sums, explicitly canceling the imaginary 
+/// ambiguities (instanton tunneling rates) to project onto the physical real line.
+pub fn median_resummation(
+    raw_coeffs: &[f64], 
+    z_val: f64, 
+    epsilon: f64, 
+    n_gl: usize
+) -> f64 {
+    let s_plus = lateral_borel_sum(raw_coeffs, z_val, epsilon, n_gl);
+    let s_minus = lateral_borel_sum(raw_coeffs, z_val, -epsilon, n_gl);
+    
+    // The Cauchy Principal Value is the real part of the average.
+    // By definition of the Stokes automorphism, the imaginary parts are equal and opposite.
+    let m_val = (s_plus + s_minus) / 2.0;
+    
+    m_val.re
+}

@@ -1,15 +1,106 @@
 // src/lib.rs
 
 use pyo3::prelude::*;
+use pyo3::exceptions::PyValueError;
+use ndarray::Array1;
 
 pub mod math;
 pub mod physics;
 pub mod solvers;
-pub mod borel_pade;
-pub mod resurgent_ps; // <--- NEW MODULE
+pub mod resurgent_ps;
 
 use physics::lifting::LiftDiagnosisPy;
 use solvers::picard::{PicardConfigPy, PicardSolverPy, PropagationResultPy, KsCr3bpResultPy};
+
+// ---------------------------------------------------------------------------
+// Astrodynamics Wrappers (Restored)
+// ---------------------------------------------------------------------------
+
+#[pyfunction]
+fn propagate_cr3bp_fast(
+    x0: Vec<f64>,
+    t_final: f64,
+    mu: f64,
+    n_cheb: Option<usize>,
+    tol: Option<f64>,
+) -> PyResult<PropagationResultPy> {
+    let mut cfg = solvers::picard::PicardConfig::default();
+    if let Some(n) = n_cheb { cfg.n_cheb = n; }
+    if let Some(t) = tol { cfg.tol = t; }
+    
+    let x0_arr = Array1::from_vec(x0);
+    let (traj, cj_err) = solvers::picard::propagate_cr3bp(&x0_arr, t_final, mu, &cfg);
+    solvers::picard::build_trajectory_result(traj, cj_err)
+}
+
+#[pyfunction]
+fn cr3bp_jacobi(state: Vec<f64>, mu: f64) -> f64 {
+    solvers::picard::jacobi_constant(&Array1::from_vec(state), mu)
+}
+
+#[pyfunction]
+fn median_resummation_py(coeffs: Vec<f64>, z: f64, epsilon: f64, n_gl: usize) -> f64 {
+    math::borel_pade::median_resummation(&coeffs, z, epsilon, n_gl)
+}
+
+#[pyfunction]
+fn diagnose_system(
+    py: Python<'_>,
+    rhs: PyObject,
+    x0: Vec<f64>,
+    t0: f64,
+    dt_pilot: f64,
+    ndim: usize,
+) -> PyResult<LiftDiagnosisPy> {
+    let system = physics::lifting::PythonOde {
+        py_obj: rhs,
+        ndim,
+    };
+    
+    let x0_arr = Array1::from_vec(x0);
+    // Execute the diagnosis utilizing 16 Chebyshev nodes for the pilot run
+    let diagnosis = physics::lifting::diagnose(&system, &x0_arr, t0, dt_pilot, 16, 3.0);
+    
+    Ok(LiftDiagnosisPy {
+        bernstein_rho: diagnosis.bernstein_rho,
+        apply_fibration: diagnosis.apply_fibration,
+        suggested_ds: diagnosis.suggested_ds,
+    })
+}
+
+#[pyfunction]
+fn ks_map_py(u: Vec<f64>) -> PyResult<Vec<f64>> {
+    if u.len() != 4 { return Err(PyValueError::new_err("u must have length 4")); }
+    Ok(physics::lifting::ks_map(&[u[0], u[1], u[2], u[3]]).to_vec())
+}
+
+#[pyfunction]
+fn ks_inverse_py(r: Vec<f64>) -> PyResult<Vec<f64>> {
+    if r.len() != 3 { return Err(PyValueError::new_err("r must have length 3")); }
+    match physics::lifting::ks_inverse(&[r[0], r[1], r[2]]) {
+        Some(u) => Ok(u.to_vec()),
+        None => Err(PyValueError::new_err("|r| = 0: inverse KS map undefined")),
+    }
+}
+
+#[pyfunction]
+fn lc_map_py(u: Vec<f64>) -> PyResult<Vec<f64>> {
+    if u.len() != 2 { return Err(PyValueError::new_err("u must have length 2")); }
+    Ok(physics::lifting::lc_map(&[u[0], u[1]]).to_vec())
+}
+
+#[pyfunction]
+fn lc_inverse_py(r: Vec<f64>) -> PyResult<Vec<f64>> {
+    if r.len() != 2 { return Err(PyValueError::new_err("r must have length 2")); }
+    match physics::lifting::lc_inverse(&[r[0], r[1]]) {
+        Some(u) => Ok(u.to_vec()),
+        None => Err(PyValueError::new_err("|r| = 0: inverse LC map undefined")),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Borel-Padé & Resurgence Wrappers
+// ---------------------------------------------------------------------------
 
 #[pyfunction]
 fn borel_pade_laplace_py(coeffs: Vec<f64>, z: f64, n_gl: usize) -> f64 {
@@ -21,7 +112,6 @@ fn extract_singularities_py(coeffs: Vec<f64>) -> Vec<f64> {
     borel_pade::extract_singularities(&coeffs)
 }
 
-/// Python binding for the Resurgent Pseudoinverse
 #[pyfunction]
 #[pyo3(name = "resurgent_pseudoinverse")]
 fn resurgent_pseudoinverse_py<'py>(
@@ -31,58 +121,272 @@ fn resurgent_pseudoinverse_py<'py>(
     eps_max: f64,
     n_cheb: usize,
 ) -> PyResult<(&'py numpy::PyArray2<f64>, &'py numpy::PyArray2<f64>)> {
-    
-    // Wrap the Python callable into a Rust closure
     let func = |eps: f64| -> nalgebra::DMatrix<f64> {
         Python::with_gil(|py2| {
-            let args = (eps,);
-            let result = a_func.call1(py2, args).unwrap();
+            let result = a_func.call1(py2, (eps,)).unwrap();
             let pyarray: &numpy::PyArray2<f64> = result.extract(py2).unwrap();
-            
-            // Safe copy from numpy to nalgebra DMatrix
             let arr = pyarray.as_array();
             let mut mat = nalgebra::DMatrix::zeros(arr.nrows(), arr.ncols());
             for i in 0..arr.nrows() {
-                for j in 0..arr.ncols() {
-                    mat[(i, j)] = arr[[i, j]];
-                }
+                for j in 0..arr.ncols() { mat[(i, j)] = arr[[i, j]]; }
             }
             mat
         })
     };
-
     let res = resurgent_ps::resurgent_pseudoinverse(func, eps_min, eps_max, n_cheb);
-
-    // Safe copy from nalgebra DMatrix back to numpy
     let r_minus_1_py = numpy::PyArray2::from_shape_fn(py, (res.r_minus_1.nrows(), res.r_minus_1.ncols()), |(i, j)| res.r_minus_1[(i, j)]);
     let r_0_py = numpy::PyArray2::from_shape_fn(py, (res.r_0.nrows(), res.r_0.ncols()), |(i, j)| res.r_0[(i, j)]);
-
     Ok((r_minus_1_py, r_0_py))
 }
 
+// C-ABI Signatures generated by the Python JIT
+type CAbiFunc = unsafe extern "C" fn(
+    x_ptr: *const f64,
+    t_ptr: *const f64,
+    out_ptr: *mut f64,
+    ndim: usize,
+    npts: usize,
+);
+
+#[pyclass]
+pub struct PropagationResultPy {
+    #[pyo3(get)]
+    pub n_segments: usize,
+    #[pyo3(get)]
+    pub final_state: Vec<f64>,
+    #[pyo3(get)]
+    pub nk_bound_max: f64,
+    // NEW FIELDS for Continuous Chebyshev Evaluation
+    #[pyo3(get)]
+    pub last_seg_coeffs: Vec<f64>,
+    #[pyo3(get)]
+    pub coeff_rows: usize,
+    #[pyo3(get)]
+    pub coeff_cols: usize,
+}
+
+#[pyfunction]
+#[pyo3(name = "propagate_custom_c_abi")]
+fn propagate_custom_c_abi_py(
+    x0: Vec<f64>,
+    t_final: f64,
+    rhs_ptr_val: usize,
+    jac_ptr_val: Option<usize>,
+    uk_ptr_val: Option<usize>,
+    n_cheb: Option<usize>,
+    tol: Option<f64>,
+    certify: Option<bool>,
+    propagate_stm: Option<bool>, // NEW: Gap 7 Resolution
+) -> PyResult<PropagationResultPy> {
+    
+    let mut config = solvers::picard::PicardConfig::default();
+    if let Some(n) = n_cheb { config.n_cheb = n; }
+    if let Some(t) = tol { config.tol = t; }
+    if let Some(c) = certify { config.certify = c; }
+
+    let ndim = x0.len();
+    let do_stm = propagate_stm.unwrap_or(false);
+
+    // 1. Transmute RHS function pointer
+    let rhs_c_fn: CAbiFunc = unsafe { std::mem::transmute(rhs_ptr_val as *const ()) };
+    let rhs_closure = |x: &ndarray::Array2<f64>, t: &ndarray::Array1<f64>| -> ndarray::Array2<f64> {
+        let npts = x.ncols();
+        let mut out = ndarray::Array2::<f64>::zeros((ndim, npts));
+        unsafe { rhs_c_fn(x.as_ptr(), t.as_ptr(), out.as_mut_ptr(), ndim, npts); }
+        out
+    };
+
+    // 2. Transmute Jacobian function pointer
+    let jac_closure_opt = jac_ptr_val.map(|ptr| {
+        let jac_c_fn: CAbiFunc = unsafe { std::mem::transmute(ptr as *const ()) };
+        move |x: &ndarray::Array2<f64>, t: &ndarray::Array1<f64>| -> ndarray::Array2<f64> {
+            let npts = x.ncols();
+            let mut out = ndarray::Array2::<f64>::zeros((ndim * ndim, npts));
+            unsafe { jac_c_fn(x.as_ptr(), t.as_ptr(), out.as_mut_ptr(), ndim, npts); }
+            out
+        }
+    });
+
+    // 3. Transmute UK Constraint function pointer
+    let uk_closure_opt = uk_ptr_val.map(|ptr| {
+        let uk_c_fn: CAbiFunc = unsafe { std::mem::transmute(ptr as *const ()) };
+        move |x: &ndarray::Array2<f64>, t: &ndarray::Array1<f64>| -> ndarray::Array2<f64> {
+            let npts = x.ncols();
+            let mut out = ndarray::Array2::<f64>::zeros((ndim, npts));
+            unsafe { uk_c_fn(x.as_ptr(), t.as_ptr(), out.as_mut_ptr(), ndim, npts); }
+            out
+        }
+    });
+
+    let traj = if do_stm {
+        // STM Propagation Pathway
+        let jac_closure = jac_closure_opt.as_ref().expect("Jacobian required for STM propagation.");
+        
+        // Augment initial condition: Y0 = [x0, vec(I)]
+        let mut y0 = Vec::with_capacity(ndim + ndim * ndim);
+        y0.extend_from_slice(&x0);
+        for r in 0..ndim {
+            for c in 0..ndim {
+                y0.push(if r == c { 1.0 } else { 0.0 });
+            }
+        }
+        let y0_arr = Array1::from_vec(y0);
+
+        // Create the augmented RHS closure
+        let stm_rhs = |y: &ndarray::Array2<f64>, t: &ndarray::Array1<f64>| -> ndarray::Array2<f64> {
+            solvers::stm::stm_rhs_batch(&rhs_closure, jac_closure, y, t, ndim)
+        };
+
+        solvers::picard::propagate_custom(
+            &stm_rhs,
+            None, // NK certification for STM block requires higher-order tensors, omitted for now
+            None, // UK constraints on STM block omitted for now
+            &y0_arr,
+            0.0,
+            t_final,
+            &config,
+            false,
+        )
+    } else {
+        // Standard State Propagation Pathway
+        let x0_arr = Array1::from_vec(x0);
+        solvers::picard::propagate_custom(
+            &rhs_closure,
+            jac_closure_opt.as_ref(),
+            uk_closure_opt.as_ref(),
+            &x0_arr,
+            0.0,
+            t_final,
+            &config,
+            false,
+        )
+    };
+
+    // Extract the final state/augmented state
+    let final_state = traj.final_state().map(|a| a.to_vec()).unwrap_or_default();
+    let nk_bound_max = traj.segments.iter()
+        .map(|s| s.nk_bound.unwrap_or(0.0))
+        .fold(0.0f64, f64::max);
+
+    // We also return the continuous Chebyshev coefficients of the final segment
+    // so the Python SC-EKF can evaluate the state at any arbitrary fractional time.
+    let last_seg_coeffs = traj.segments.last()
+        .map(|s| s.cheb_coeffs.clone().into_raw_vec())
+        .unwrap_or_default();
+
+    Ok(PropagationResultPy {
+        n_segments: traj.total_segments(),
+        final_state,
+        nk_bound_max,
+        // (Assuming we add `last_seg_coeffs` to PropagationResultPy struct)
+        last_seg_coeffs,
+        coeff_rows: traj.segments.last().map(|s| s.cheb_coeffs.nrows()).unwrap_or(0),
+        coeff_cols: traj.segments.last().map(|s| s.cheb_coeffs.ncols()).unwrap_or(0),
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Udwadia-Kalaba Wrappers
+// ---------------------------------------------------------------------------
+
+#[pyfunction]
+#[pyo3(name = "compute_uk_force")]
+fn compute_uk_force_py<'py>(
+    py: Python<'py>,
+    m_arr: numpy::PyReadonlyArray2<'py, f64>,
+    a_arr: numpy::PyReadonlyArray2<'py, f64>,
+    b_arr: numpy::PyReadonlyArray1<'py, f64>,
+    q_arr: numpy::PyReadonlyArray1<'py, f64>,
+    tol: f64,
+) -> &'py numpy::PyArray1<f64> {
+    let m_view = m_arr.as_array();
+    let m = nalgebra::DMatrix::from_row_slice(m_view.nrows(), m_view.ncols(), m_view.as_slice().unwrap());
+    let a_view = a_arr.as_array();
+    let a = nalgebra::DMatrix::from_row_slice(a_view.nrows(), a_view.ncols(), a_view.as_slice().unwrap());
+    let b_view = b_arr.as_array();
+    let b = nalgebra::DVector::from_column_slice(b_view.as_slice().unwrap());
+    let q_view = q_arr.as_array();
+    let q = nalgebra::DVector::from_column_slice(q_view.as_slice().unwrap());
+
+    let fc = physics::constrain_uk::compute_uk_force(&m, &a, &b, &q, tol);
+    numpy::PyArray1::from_slice(py, fc.as_slice())
+}
+
+#[pyfunction]
+#[pyo3(name = "compute_uk_force_identity")]
+fn compute_uk_force_identity_py<'py>(
+    py: Python<'py>,
+    a_arr: numpy::PyReadonlyArray2<'py, f64>,
+    b_arr: numpy::PyReadonlyArray1<'py, f64>,
+    q_arr: numpy::PyReadonlyArray1<'py, f64>,
+    tol: f64,
+) -> &'py numpy::PyArray1<f64> {
+    let a_view = a_arr.as_array();
+    let a = nalgebra::DMatrix::from_row_slice(a_view.nrows(), a_view.ncols(), a_view.as_slice().unwrap());
+    let b_view = b_arr.as_array();
+    let b = nalgebra::DVector::from_column_slice(b_view.as_slice().unwrap());
+    let q_view = q_arr.as_array();
+    let q = nalgebra::DVector::from_column_slice(q_view.as_slice().unwrap());
+
+    let fc = physics::constrain_uk::compute_uk_force_identity(&a, &b, &q, tol);
+    numpy::PyArray1::from_slice(py, fc.as_slice())
+}
+
+#[pyfunction]
+#[pyo3(name = "evaluate_clenshaw")]
+fn evaluate_clenshaw_py<'py>(
+    py: Python<'py>,
+    coeffs: numpy::PyReadonlyArray2<'py, f64>,
+    tau: f64,
+) -> &'py numpy::PyArray1<f64> {
+    let c_view = coeffs.as_array();
+    let ndim = c_view.nrows();
+    let mut out = ndarray::Array1::<f64>::zeros(ndim);
+    
+    // Enforce domain bounds for tau to prevent divergence
+    let tau_clamped = tau.clamp(-1.0, 1.0);
+
+    for i in 0..ndim {
+        let row = c_view.row(i).to_owned();
+        out[i] = math::chebyshev::clenshaw(&row, tau_clamped);
+    }
+    
+    numpy::PyArray1::from_slice(py, out.as_slice().unwrap())
+}
+
+
+
+// ---------------------------------------------------------------------------
+// Module Registration
+// ---------------------------------------------------------------------------
+
 #[pymodule]
-fn asp_core(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
+fn _asp_core(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<PicardConfigPy>()?;
     m.add_class::<PicardSolverPy>()?;
     m.add_class::<PropagationResultPy>()?;
     m.add_class::<LiftDiagnosisPy>()?;
     m.add_class::<KsCr3bpResultPy>()?;
 
-    m.add_function(wrap_pyfunction!(solvers::picard::propagate_cr3bp_fast, m)?)?;
-    m.add_function(wrap_pyfunction!(physics::ks_cr3bp::cr3bp_jacobi, m)?)?;
-    m.add_function(wrap_pyfunction!(physics::lifting::diagnose_system, m)?)?;
-    m.add_function(wrap_pyfunction!(physics::ks_cr3bp::ks_map_py, m)?)?;
-    m.add_function(wrap_pyfunction!(physics::ks_cr3bp::ks_inverse_py, m)?)?;
-    m.add_function(wrap_pyfunction!(physics::lifting::lc_map_py, m)?)?;
-    m.add_function(wrap_pyfunction!(physics::lifting::lc_inverse_py, m)?)?;
+    m.add_function(wrap_pyfunction!(propagate_cr3bp_fast, m)?)?;
+    m.add_function(wrap_pyfunction!(cr3bp_jacobi, m)?)?;
+    m.add_function(wrap_pyfunction!(diagnose_system, m)?)?;
+    m.add_function(wrap_pyfunction!(ks_map_py, m)?)?;
+    m.add_function(wrap_pyfunction!(ks_inverse_py, m)?)?;
+    m.add_function(wrap_pyfunction!(lc_map_py, m)?)?;
+    m.add_function(wrap_pyfunction!(lc_inverse_py, m)?)?;
     
     m.add_function(wrap_pyfunction!(borel_pade_laplace_py, m)?)?;
     m.add_function(wrap_pyfunction!(extract_singularities_py, m)?)?;
-    
-    // NEW BINDING
     m.add_function(wrap_pyfunction!(resurgent_pseudoinverse_py, m)?)?;
 
+    m.add_function(wrap_pyfunction!(propagate_custom_c_abi_py, m)?)?;
+    m.add_function(wrap_pyfunction!(evaluate_clenshaw_py, m)?)?;
+    m.add_function(wrap_pyfunction!(compute_uk_force_py, m)?)?;
+    m.add_function(wrap_pyfunction!(compute_uk_force_identity_py, m)?)?;
+
+    m.add_function(wrap_pyfunction!(median_resummation_py, m)?)?;
+
     m.add("__version__", "0.1.0")?;
-    
     Ok(())
 }

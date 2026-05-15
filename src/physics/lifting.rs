@@ -28,7 +28,45 @@
 //   - Stiefeleñ Scheifele (1971) for Levi-Civita (2D case)
 
 use ndarray::{Array1, Array2};
-use crate::chebyshev::{lobatto_nodes, ChebVec};
+use crate::math::chebyshev::{lobatto_nodes, ChebVec};
+
+use pyo3::prelude::*;
+use pyo3::types::PyTuple;
+use numpy::{PyArray1, PyArray2, ToPyArray};
+
+/// A bridge struct allowing Rust's generic ODE lifting engine to evaluate
+/// vector fields defined purely in Python.
+pub struct PythonOde {
+    pub py_obj: PyObject,
+    pub ndim: usize,
+}
+
+impl OdeSystem for PythonOde {
+    fn ndim(&self) -> usize {
+        self.ndim
+    }
+
+    fn rhs_batch(&self, x_batch: &Array2<f64>, t_batch: &Array1<f64>) -> Array2<f64> {
+        Python::with_gil(|py| {
+            // Convert Rust ndarrays to NumPy arrays without copying where possible
+            let py_x = x_batch.to_pyarray(py);
+            let py_t = t_batch.to_pyarray(py);
+            
+            // Construct arguments tuple
+            let args = PyTuple::new(py, &[py_x.as_any(), py_t.as_any()]);
+            
+            // Invoke the Python callable
+            let result = self.py_obj.call1(py, args)
+                .expect("Python ODE evaluation failed during diagnosis.");
+            
+            // Extract the resulting NumPy array back to Rust Array2
+            let py_out: &numpy::PyArray2<f64> = result.extract(py)
+                .expect("Python ODE must return a 2D numpy float64 array.");
+            
+            py_out.to_owned_array()
+        })
+    }
+}
 
 // ============================================================
 //  Public types
