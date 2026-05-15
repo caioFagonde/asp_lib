@@ -1,11 +1,7 @@
-// src/math/chebyshev.rs
-
 use ndarray::{Array1, Array2};
 use rustdct::DctPlanner;
 use std::sync::Mutex;
-use std::collections::HashMap;
 
-// Cache DCT planners to avoid re-allocating them on every segment
 lazy_static::lazy_static! {
     static ref DCT_PLANNER: Mutex<DctPlanner<f64>> = Mutex::new(DctPlanner::new());
 }
@@ -30,12 +26,11 @@ pub fn values_to_coeffs(fvals: &Array1<f64>) -> Array1<f64> {
     let n_float = n as f64;
     for (k, val) in buffer.iter_mut().enumerate() {
         if k == 0 || k == n {
-            *val /= 2.0 * n_float; // Halve endpoints to match synthesis convention
+            *val /= 2.0 * n_float; 
         } else {
             *val /= n_float;
         }
     }
-    
     Array1::from_vec(buffer)
 }
 
