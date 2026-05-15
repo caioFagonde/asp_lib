@@ -169,11 +169,11 @@ pub fn robust_pade(coeffs: &[Complex<f64>]) -> (Vec<Complex<f64>>, Vec<Complex<f
     let m = n / 2;
     let l = n - m;
 
-    // Build the (m × (m+1)) Toeplitz matrix T
-    let mut t = DMatrix::<Complex<f64>>::zeros(m, m + 1);
+    // Build the ((m+1) × (m+1)) Toeplitz matrix T (padded with zero row for square SVD)
+    let mut t = DMatrix::<Complex<f64>>::zeros(m + 1, m + 1);
     for i in 0..m {
         for j in 0..=m {
-            let idx = l as isize + i as isize - j as isize;
+            let idx = l as isize + 1 + i as isize - j as isize;
             if idx >= 0 && (idx as usize) < coeffs.len() {
                 t[(i, j)] = coeffs[idx as usize];
             }
@@ -357,7 +357,7 @@ fn estimate_action_aitken(borel_coeffs: &[f64]) -> Option<f64> {
             borel_coeffs[i].abs() > f64::MIN_POSITIVE * 1e10 &&
             borel_coeffs[i + 1].abs() > f64::MIN_POSITIVE * 1e10
         })
-        .map(|i| borel_coeffs[i].abs() / borel_coeffs[i + 1].abs())
+        .map(|i| borel_coeffs[i] / borel_coeffs[i + 1])
         .collect();
 
     if ratios.len() < 3 { return ratios.last().copied(); }
@@ -382,8 +382,8 @@ fn estimate_action_aitken(borel_coeffs: &[f64]) -> Option<f64> {
     let pass2 = aitken_step(&pass1);
 
     // Return the most refined estimate available
-    if let Some(&v) = pass2.last() { if v.is_finite() && v > 0.0 { return Some(v); } }
-    if let Some(&v) = pass1.last() { if v.is_finite() && v > 0.0 { return Some(v); } }
+    if let Some(&v) = pass2.last() { if v.is_finite() && v.abs() > 0.0 { return Some(v); } }
+    if let Some(&v) = pass1.last() { if v.is_finite() && v.abs() > 0.0 { return Some(v); } }
     ratios.last().copied()
 }
 

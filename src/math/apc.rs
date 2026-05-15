@@ -23,13 +23,23 @@ pub fn compute_apc_collocation(moments: &[f64], n_points: usize) -> Result<(Vec<
                         Moments are invalid or distribution is degenerate.".to_string())?;
     let l = cholesky.l();
 
+    // Compute the extra row of L needed for alpha_{N-1}
+    let mut l_next_row = vec![0.0; n_points];
+    for j in 0..n_points {
+        let mut sum = 0.0;
+        for k in 0..j {
+            sum += l_next_row[k] * l[(j, k)];
+        }
+        l_next_row[j] = (moments[n_points + j] - sum) / l[(j, j)];
+    }
+
     // 3. Extract the three-term recurrence coefficients (alpha, beta)
     let mut alpha = vec![0.0; n_points];
     let mut beta = vec![0.0; n_points];
 
     for j in 0..n_points {
         let l_j_j = l[(j, j)];
-        let l_jp1_j = if j + 1 < n_points { l[(j + 1, j)] } else { 0.0 };
+        let l_jp1_j = if j + 1 < n_points { l[(j + 1, j)] } else { l_next_row[j] };
         
         let l_j_jm1 = if j > 0 { l[(j, j - 1)] } else { 0.0 };
         let l_jm1_jm1 = if j > 0 { l[(j - 1, j - 1)] } else { 1.0 }; // Prevent div by zero, term cancels anyway

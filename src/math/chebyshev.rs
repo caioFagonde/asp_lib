@@ -57,7 +57,7 @@ pub fn integrate_coeffs(c: &Array1<f64>, ic: f64, alpha: f64) -> Array1<f64> {
     let n = c.len() - 1;
     let a = |k: usize| -> f64 {
         let v = c[k];
-        if k == 0 || k == n { 2.0 * v } else { v }
+        if k == 0 { 2.0 * v } else { v }
     };
     let a_ext = |k: usize| -> f64 {
         if k <= n { a(k) } else { 0.0 }
