@@ -211,7 +211,7 @@ fn resurgent_pseudoinverse_py(
     n_cheb: usize,
 ) -> PyResult<(Py<numpy::PyArray2<f64>>, Py<numpy::PyArray2<f64>>)> {
     let func = |eps: f64| -> nalgebra::DMatrix<f64> {
-        let result = a_func.bind(py).call1((eps,)).unwrap();
+        let result = a_func.as_ref(py).call1((eps,)).unwrap();
         let pyarray: numpy::PyReadonlyArray2<f64> = result.extract().unwrap();
         let arr = pyarray.as_array();
         let mut mat = nalgebra::DMatrix::zeros(arr.nrows(), arr.ncols());
@@ -226,7 +226,7 @@ fn resurgent_pseudoinverse_py(
     let to_py = |m: &nalgebra::DMatrix<f64>| -> Py<numpy::PyArray2<f64>> {
         let (nr, nc) = (m.nrows(), m.ncols());
         let arr = ndarray::Array2::from_shape_fn((nr, nc), |(i, j)| m[(i, j)]);
-        arr.to_pyarray(py).unbind()
+        arr.to_pyarray(py).to_owned()
     };
 
     Ok((to_py(&res.r_minus_1), to_py(&res.r_0)))

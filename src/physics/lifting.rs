@@ -26,7 +26,7 @@ impl OdeSystem for PythonOde {
             let py_x = x_batch.to_pyarray(py);
             let py_t = t_batch.to_pyarray(py);
             
-            let result = self.py_obj.bind(py).call1((py_x, py_t))
+            let result = self.py_obj.as_ref(py).call1((py_x, py_t))
                 .expect("Python ODE evaluation failed during diagnosis.");
             
             let py_out: numpy::PyReadonlyArray2<f64> = result.extract()

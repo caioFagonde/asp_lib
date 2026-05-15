@@ -1,5 +1,5 @@
-   0.069539639s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint: fingerprint error for asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib)/Check { test: false }/TargetInner { ..: lib_target("asp_core", ["cdylib"], "/home/caion/Documentos/github/asp_lib/src/lib.rs", Edition2021) }
-   0.069594972s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/caion/Documentos/github/asp_lib/target/debug/.fingerprint/asp_core-7cf4a0de3c6df4bd/lib-asp_core`
+   0.068425847s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint: fingerprint error for asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib)/Check { test: false }/TargetInner { ..: lib_target("asp_core", ["cdylib"], "/home/caion/Documentos/github/asp_lib/src/lib.rs", Edition2021) }
+   0.068452195s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/caion/Documentos/github/asp_lib/target/debug/.fingerprint/asp_core-7cf4a0de3c6df4bd/lib-asp_core`
 
 Caused by:
     No such file or directory (os error 2)
@@ -43,8 +43,8 @@ Stack backtrace:
   25: __libc_start_main_impl
              at ./csu/../csu/libc-start.c:360:3
   26: <unknown>
-   0.125910943s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint: fingerprint error for asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib)/Check { test: true }/TargetInner { ..: lib_target("asp_core", ["cdylib"], "/home/caion/Documentos/github/asp_lib/src/lib.rs", Edition2021) }
-   0.125929669s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/caion/Documentos/github/asp_lib/target/debug/.fingerprint/asp_core-045214fd86675b2e/test-lib-asp_core`
+   0.124902865s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint: fingerprint error for asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib)/Check { test: true }/TargetInner { ..: lib_target("asp_core", ["cdylib"], "/home/caion/Documentos/github/asp_lib/src/lib.rs", Edition2021) }
+   0.124926943s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/caion/Documentos/github/asp_lib/target/debug/.fingerprint/asp_core-045214fd86675b2e/test-lib-asp_core`
 
 Caused by:
     No such file or directory (os error 2)
@@ -89,6 +89,4 @@ Stack backtrace:
              at ./csu/../csu/libc-start.c:360:3
   26: <unknown>
     Checking asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib)
-error: could not compile `asp_core` (lib) due to 3 previous errors
-warning: build failed, waiting for other jobs to finish...
-error: could not compile `asp_core` (lib test) due to 3 previous errors
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.64s
