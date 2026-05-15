@@ -1,2 +1,9 @@
 target/
 benchmarks_and_figures/
+# ignore any and every pycache and .so files
+*/__pycache__/*
+__pycache__/
+*.so
+
+
+
