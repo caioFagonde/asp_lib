@@ -49,7 +49,8 @@ pub fn robust_pade(coeffs: &[Complex<f64>]) -> (Vec<Complex<f64>>, Vec<Complex<f
     let m = n / 2;
     let l = n - m;
 
-    let mut t = DMatrix::<Complex<f64>>::zeros(m, m + 1);
+    // Pad to (m+1) x (m+1) to ensure full V^T matrix from SVD
+    let mut t = DMatrix::<Complex<f64>>::zeros(m + 1, m + 1);
     for i in 0..m {
         for j in 0..=m {
             let idx = l as isize + 1 + i as isize - j as isize;

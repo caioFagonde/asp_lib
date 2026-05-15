@@ -5,7 +5,7 @@ import math
 import asp._asp_core as asp_core
 
 class Transseries:
-    """
+    r"""
     Algebraic representation of a formal resurgent transseries:
     \Phi(z; \sigma) = \sum_{k=0}^\infty \sigma^k e^{-k A / z} \tilde{\phi}_k(z)
     """
@@ -22,7 +22,7 @@ class Transseries:
             self.action = instanton_action
 
     def median_resummation(self, z: float, epsilon: float = 1e-5, n_gl: int = 150) -> float:
-        """
+        r"""
         Executes the Measure operator (\mathcal{M}).
         Computes the Cauchy Principal Value of the ambiguous lateral Borel sums
         exactly on the Stokes line, projecting the ambiguous analytic continuation
@@ -35,7 +35,7 @@ class Transseries:
         return asp_core.median_resummation_py(self.phi_0, z, epsilon, n_gl)
 
     def extract_alien_derivative(self) -> float:
-        """
+        r"""
         Executes the Extract operator (\Delta_\omega).
         Returns the Stokes constant S_1 associated with the leading singularity.
         """
