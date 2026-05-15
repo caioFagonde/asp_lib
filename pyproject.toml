@@ -1,0 +1,22 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "asp-physics"
+version = "0.1.0"
+description = "Analytic Structural Physics: Spectral Astrodynamics and Resurgence Theory"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.22",
+    "scipy>=1.8",
+    "sympy>=1.12",
+    "grpcio>=1.50",       # For communicating with Go
+    "protobuf>=4.21"
+]
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+python-source = "python"
+module-name = "asp._asp_core" # The Rust binary is injected here
