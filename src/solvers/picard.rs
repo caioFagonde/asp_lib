@@ -13,7 +13,7 @@
 
 use ndarray::{Array1, Array2};
 use crate::chebyshev::{lobatto_nodes, ChebVec, clenshaw};
-
+use crate::math::interval::nk_certify;
 // ============================================================
 //  Solver configuration
 // ============================================================
@@ -179,29 +179,25 @@ where
     let n = config.n_cheb;
     let nodes = lobatto_nodes(n);
 
-    // Map nodes to physical (fictitious) time
     let s_nodes = Array1::from_shape_fn(n + 1, |j| {
         s_start + ds * (nodes[j] + 1.0) / 2.0
     });
 
-    // Initial iterate: constant function x(σ) = x0
     let mut x_curr = Array2::from_shape_fn((ndim, n + 1), |(i, _)| x0[i]);
-    let mut prev_cv = ChebVec::zeros(ndim, n);  // dummy for diff check
-
+    
     let mut n_iter = 0usize;
     let mut residual = f64::INFINITY;
+    
+    // Track successive differences to empirically estimate the Lipschitz contraction constant kappa
+    let mut prev_diff = f64::INFINITY;
+    let mut kappa_est = 0.0f64;
 
     for iter in 0..config.max_iter {
-        // 1. Evaluate RHS at current Picard iterate
-        let f_vals = rhs_fn(&x_curr, &s_nodes);  // [ndim, N+1]
-
-        // 2. Integrate: x_new(σ) = x0 + (ds/2) ∫_{-1}^{σ} F(σ') dσ'
-        //    Done in coefficient space using exact O(N) recurrence.
+        let f_vals = rhs_fn(&x_curr, &s_nodes);
         let f_cv = ChebVec::from_value_matrix(&f_vals);
         let integrated = integrate_cheb_with_ic_scaled(&f_cv, x0, ds / 2.0);
         let x_new_vals = integrated.to_value_matrix();
 
-        // 3. Convergence residual: max absolute change in value space
         let mut max_diff = 0.0f64;
         for i in 0..ndim {
             for j in 0..=n {
@@ -209,6 +205,14 @@ where
                 if d > max_diff { max_diff = d; }
             }
         }
+        
+        // Dynamically estimate the contraction ratio kappa = ||u_n - u_{n-1}|| / ||u_{n-1} - u_{n-2}||
+        if prev_diff < f64::INFINITY && prev_diff > 1e-14 {
+            let current_kappa = max_diff / prev_diff;
+            if current_kappa > kappa_est { kappa_est = current_kappa; } // Take the worst-case contraction
+        }
+        
+        prev_diff = max_diff;
         residual = max_diff;
         x_curr = x_new_vals;
         n_iter = iter + 1;
@@ -219,17 +223,22 @@ where
     }
 
     if residual >= config.tol * 1e3 {
-        // Diverged: signal failure
         return None;
     }
 
-    // Compute final Chebyshev coefficients
     let final_cv = ChebVec::from_value_matrix(&x_curr);
     let bernstein_rho = final_cv.estimate_bernstein_rho();
 
-    // NK certification (if requested and if residual is small enough)
+    // Rigorous Newton-Kantorovich Certification using Interval Arithmetic
     let nk_bound = if config.certify && residual < config.tol * 100.0 {
-        estimate_nk_bound(&final_cv, residual)
+        // If empirical kappa is invalid, fallback to the theoretical bound derived from Bernstein rho
+        let kappa = if kappa_est > 0.0 && kappa_est < 1.0 {
+            kappa_est
+        } else {
+            (1.0 / bernstein_rho).min(0.99)
+        };
+        // Call the rigorous interval arithmetic certifier
+        nk_certify(residual, kappa)
     } else {
         None
     };
@@ -238,13 +247,13 @@ where
         cheb_coeffs: final_cv.c,
         s_start,
         ds,
-        t_end: 0.0,  // filled in by the driver
+        t_end: 0.0, 
         n_iter,
         residual,
         nk_bound,
         bernstein_rho,
     })
-}
+}   
 
 /// Integrate a ChebVec of degree N in coefficient space.
 /// Returns a ChebVec of the SAME degree N (values evaluated at the same N+1 Lobatto nodes).

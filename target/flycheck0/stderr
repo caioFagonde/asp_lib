@@ -4,8 +4,8 @@ warning: unused manifest key: project.dependencies
 warning: unused manifest key: project.optional-dependencies
 warning: unused manifest key: project.requires-python
 warning: unused manifest key: tool
-   0.024678154s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint: fingerprint error for asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib)/Check { test: false }/TargetInner { ..: lib_target("asp_core", ["cdylib"], "/home/caion/Documentos/github/asp_lib/src/lib.rs", Edition2021) }
-   0.024697671s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/caion/Documentos/github/asp_lib/target/debug/.fingerprint/asp_core-4cb8324ea07e98a6/lib-asp_core`
+   0.024491792s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint: fingerprint error for asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib)/Check { test: false }/TargetInner { ..: lib_target("asp_core", ["cdylib"], "/home/caion/Documentos/github/asp_lib/src/lib.rs", Edition2021) }
+   0.024511796s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/caion/Documentos/github/asp_lib/target/debug/.fingerprint/asp_core-4cb8324ea07e98a6/lib-asp_core`
 
 Caused by:
     No such file or directory (os error 2)
@@ -49,8 +49,8 @@ Stack backtrace:
   25: __libc_start_main_impl
              at ./csu/../csu/libc-start.c:360:3
   26: <unknown>
-   0.076844066s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint: fingerprint error for asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib)/Check { test: true }/TargetInner { ..: lib_target("asp_core", ["cdylib"], "/home/caion/Documentos/github/asp_lib/src/lib.rs", Edition2021) }
-   0.076859091s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/caion/Documentos/github/asp_lib/target/debug/.fingerprint/asp_core-2ce2cc3303e2dfb5/test-lib-asp_core`
+   0.074747054s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint: fingerprint error for asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib)/Check { test: true }/TargetInner { ..: lib_target("asp_core", ["cdylib"], "/home/caion/Documentos/github/asp_lib/src/lib.rs", Edition2021) }
+   0.074761232s  INFO prepare_target{force=false package_id=asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib) target="asp_core"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/caion/Documentos/github/asp_lib/target/debug/.fingerprint/asp_core-2ce2cc3303e2dfb5/test-lib-asp_core`
 
 Caused by:
     No such file or directory (os error 2)
@@ -95,6 +95,6 @@ Stack backtrace:
              at ./csu/../csu/libc-start.c:360:3
   26: <unknown>
     Checking asp_core v0.1.0 (/home/caion/Documentos/github/asp_lib)
-error: could not compile `asp_core` (lib) due to 21 previous errors; 5 warnings emitted
+error: could not compile `asp_core` (lib) due to 24 previous errors; 5 warnings emitted
 warning: build failed, waiting for other jobs to finish...
-error: could not compile `asp_core` (lib test) due to 22 previous errors; 6 warnings emitted
+error: could not compile `asp_core` (lib test) due to 25 previous errors; 6 warnings emitted
