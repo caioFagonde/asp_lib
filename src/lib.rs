@@ -2,6 +2,8 @@
 //
 // PyO3 FFI layer for the ASP Computational Engine.
 
+#![allow(non_local_definitions)]
+
 use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
 use ndarray::Array1;

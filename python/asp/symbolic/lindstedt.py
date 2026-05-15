@@ -81,4 +81,4 @@ def generate_mock_lindstedt_series(
             V_k *= (2.0 * np.pi * 1j / k)
             V.append(V_k)
             
-    return norm_sq
+    return norms

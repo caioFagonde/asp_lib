@@ -2,7 +2,7 @@
 
 import numpy as np
 import pytest
-import asp_core
+import asp._asp_core as asp_core
 
 def test_milestone_4_resurgent_pseudoinverse():
     """

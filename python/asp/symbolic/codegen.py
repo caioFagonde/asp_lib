@@ -7,7 +7,7 @@ import tempfile
 import subprocess
 import hashlib
 import sympy as sp
-from sympy.printing.rust import rust_code
+from sympy.printing.rust import RustCodePrinter
 
 class RustJITCompiler:
     """
@@ -64,9 +64,10 @@ class RustJITCompiler:
         lines.append(f"        let {self.time_var.name} = t[j];")
         lines.append("")
 
+        printer = RustCodePrinter()
         # Assign computed expressions
         for i, expr in enumerate(exprs):
-            rust_expr = rust_code(expr)
+            rust_expr = printer.doprint(expr)
             lines.append(f"        out[{i} * npts + j] = {rust_expr};")
 
         lines.append("    }")

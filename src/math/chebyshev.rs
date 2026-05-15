@@ -26,9 +26,9 @@ pub fn values_to_coeffs(fvals: &Array1<f64>) -> Array1<f64> {
     let n_float = n as f64;
     for (k, val) in buffer.iter_mut().enumerate() {
         if k == 0 || k == n {
-            *val /= 2.0 * n_float; 
+            *val /= n_float; 
         } else {
-            *val /= n_float;
+            *val *= 2.0 / n_float;
         }
     }
     Array1::from_vec(buffer)
