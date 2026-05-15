@@ -30,4 +30,4 @@ path = "src/bin/worker.rs"
 required-features = ["grpc-worker"]
 
 [features]
-grpc-worker = ["tonic", "prost", "tokio", "rayon"]
+grpc-worker = ["prost", "tokio", "rayon"]

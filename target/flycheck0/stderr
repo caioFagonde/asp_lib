@@ -1,5 +1,5 @@
 error: failed to parse manifest at `/home/caion/Documentos/github/asp_lib/Cargo.toml`
 
 Caused by:
-  feature `grpc-worker` includes `tonic`, but `tonic` is not an optional dependency
+  feature `grpc-worker` includes `prost`, but `prost` is not an optional dependency
   A non-optional dependency of the same name is defined; consider adding `optional = true` to its definition.
