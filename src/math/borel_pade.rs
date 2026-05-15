@@ -151,7 +151,32 @@ pub fn borel_pade_laplace(raw_coeffs: &[f64], z_val: f64, n_gl: usize) -> f64 {
     sum.re
 }
 
-/// Extracts physical Borel singularities (instanton actions) from the raw coefficients.
+pub fn filter_froissart_doublets(
+    p_roots: &[Complex<f64>],
+    q_roots: &[Complex<f64>],
+    delta: f64,
+) -> Vec<Complex<f64>> {
+    // Greedy nearest-neighbor pole-zero cancellation
+    let mut cancelled_q = vec![false; q_roots.len()];
+    for &p_root in p_roots {
+        if let Some(idx) = q_roots.iter().enumerate()
+            .filter(|(i, _)| !cancelled_q[*i])
+            .min_by(|(_, a), (_, b)| {
+                (a - p_root).norm().partial_cmp(&(b - p_root).norm()).unwrap()
+            })
+            .map(|(i, _)| i)
+        {
+            if (q_roots[idx] - p_root).norm() < delta {
+                cancelled_q[idx] = true; // This pole cancels with a nearby zero
+            }
+        }
+    }
+    q_roots.iter().enumerate()
+        .filter(|(i, _)| !cancelled_q[*i])
+        .map(|(_, &r)| r)
+        .collect()
+}
+
 pub fn extract_singularities(raw_coeffs: &[f64]) -> Vec<f64> {
     let mut borel_coeffs = Vec::with_capacity(raw_coeffs.len());
     let mut fact = 1.0;
@@ -160,22 +185,22 @@ pub fn extract_singularities(raw_coeffs: &[f64]) -> Vec<f64> {
         if n > 0 { fact *= n as f64; }
         borel_coeffs.push(Complex::new(c / fact, 0.0));
     }
-
-    let (_, q) = robust_pade(&borel_coeffs);
-    let roots = polynomial_roots(&q);
+    let (p, q) = robust_pade(&borel_coeffs);
+    let p_roots = polynomial_roots(&p);
+    let q_roots_raw = polynomial_roots(&q);
+    
+    // Apply Froissart doublet removal before returning poles
+    let q_roots_clean = filter_froissart_doublets(&p_roots, &q_roots_raw, 1e-3);
     
     let mut physical_poles = Vec::new();
-    for root in roots {
-        // Filter for poles that lie primarily on the real axis (the physical singularities)
+    for root in q_roots_clean {
         if root.im.abs() < 1e-3 {
             physical_poles.push(root.re);
         }
     }
-    
     physical_poles.sort_by(|a, b| a.partial_cmp(b).unwrap());
     physical_poles
 }
-
 // src/math/borel_pade.rs (Additions)
 
 /// Computes the Lateral Borel Sum $\mathcal{S}^{\pm\epsilon}$.

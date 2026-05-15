@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - name: Install System Dependencies
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler libprotobuf-dev
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Run Cargo tests
@@ -22,6 +24,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - name: Install System Dependencies
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler libprotobuf-dev
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -32,6 +36,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e .[test]
+      - name: Generate Python gRPC Stubs
+        run: |
+          python -m grpc_tools.protoc -Igo_services/proto --python_out=python/asp/orchestrator --grpc_python_out=python/asp/orchestrator go_services/proto/asp_cluster.proto
+          # Patch the generated gRPC file to use relative imports for Python 3 compatibility
+          sed -i 's/import asp_cluster_pb2/from . import asp_cluster_pb2/' python/asp/orchestrator/asp_cluster_pb2_grpc.py
       - name: Run PyTest
         run: |
           pytest tests/ -v --cov=asp

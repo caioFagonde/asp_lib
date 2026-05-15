@@ -17,9 +17,9 @@ pub fn chebyshev_fit(vals: ArrayView1<f64>) -> Array1<f64> {
     let n_float = (n - 1) as f64;
     for (k, val) in buffer.iter_mut().enumerate() {
         if k == 0 || k == n - 1 {
-            *val /= n_float;
+            *val /= 2.0 * n_float;   // endpoint: divide by 2N
         } else {
-            *val *= 2.0 / n_float;
+            *val /= n_float;          // interior: divide by N
         }
     }
     

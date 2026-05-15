@@ -4,47 +4,32 @@ import (
 	"context"
 	"log"
 	"net"
-	"sync"
+	"os"
 
-	pb "asp_cluster/pb" // Assumes protoc generation to this path
+	pb "asp_cluster/pb"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type dispatchServer struct {
 	pb.UnimplementedOrbitDispatchServer
+	workerClient pb.OrbitDispatchClient
 }
 
-// PropagateBatch receives a massive batch of ICs and fans them out to Rust workers
+// PropagateBatch receives a batch of ICs and forwards them to the Rust worker cluster
 func (s *dispatchServer) PropagateBatch(ctx context.Context, req *pb.PropagateBatchRequest) (*pb.PropagateBatchResponse, error) {
-	log.Printf("Received Job %s with %d trajectories", req.JobId, len(req.InitialStates))
+	log.Printf("Orchestrator received Job %s. Forwarding %d trajectories to Rust worker...", req.JobId, len(req.InitialStates))
 
-	// In a full implementation, this channels data to a Redis queue or directly to Rust gRPC workers.
-	// Here we simulate the fan-out and aggregation.
-	var wg sync.WaitGroup
-	results := make([]*pb.TrajectoryResult, len(req.InitialStates))
-
-	for i, state := range req.InitialStates {
-		wg.Add(1)
-		go func(idx int, st *pb.StateVector) {
-			defer wg.Done()
-			// Mocking the Rust worker response for architectural skeleton
-			results[idx] = &pb.TrajectoryResult{
-				FinalState:   st.Components, // Mock
-				JacobiError:  1e-13,
-				NkBound:      1e-11,
-				IsCertified:  true,
-				SegmentsUsed: 42,
-			}
-		}(i, state)
+	// Forward the request to the Rust worker node
+	// In a full production system, this would chunk the array and fan out to multiple workers
+	res, err := s.workerClient.PropagateBatch(ctx, req)
+	if err != nil {
+		log.Printf("Error calling Rust worker: %v", err)
+		return nil, err
 	}
 
-	wg.Wait()
-	log.Printf("Job %s completed.", req.JobId)
-
-	return &pb.PropagateBatchResponse{
-		JobId:   req.JobId,
-		Results: results,
-	}, nil
+	log.Printf("Job %s completed by Rust worker.", req.JobId)
+	return res, nil
 }
 
 func main() {
@@ -53,8 +38,23 @@ func main() {
 		log.Fatalf("Failed to listen: %v", err)
 	}
 
+	workerURL := os.Getenv("RUST_WORKER_URL")
+	if workerURL == "" {
+		workerURL = "localhost:50052"
+	}
+
+	// Connect to the Rust gRPC worker
+	log.Printf("Dialing Rust worker at %s...", workerURL)
+	conn, err := grpc.Dial(workerURL, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Fatalf("Failed to dial Rust worker: %v", err)
+	}
+	defer conn.Close()
+
+	workerClient := pb.NewOrbitDispatchClient(conn)
+
 	grpcServer := grpc.NewServer()
-	pb.RegisterOrbitDispatchServer(grpcServer, &dispatchServer{})
+	pb.RegisterOrbitDispatchServer(grpcServer, &dispatchServer{workerClient: workerClient})
 
 	log.Println("ASP Orbit Dispatch Service listening on :50051")
 	if err := grpcServer.Serve(lis); err != nil {

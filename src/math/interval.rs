@@ -11,8 +11,8 @@ pub struct Interval {
 
 impl Interval {
     pub fn new(val: f64) -> Self {
-        // Enclose the float with a 1-ULP bound to account for representation error
-        let eps = val.abs() * f64::EPSILON;
+        // 2-ULP outward rounding: accounts for computation of eps itself
+        let eps = 2.0 * val.abs() * f64::EPSILON + f64::MIN_POSITIVE;
         Interval {
             inf: val - eps,
             sup: val + eps,

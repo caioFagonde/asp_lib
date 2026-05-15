@@ -69,8 +69,8 @@
 //   KS for planetary protection: Armellin et al. (2021) JGCD 44:1089-1102
 
 use ndarray::{Array1, Array2};
-use crate::picard::{PicardConfig, propagate, Trajectory, jacobi_constant};
-
+use crate::solvers::picard::{PicardConfig, propagate, Trajectory, jacobi_constant};
+use crate::math::chebyshev::clenshaw;
 // ─────────────────────────────────────────────────────────────────────────────
 //  L(u) matrix–vector products (inline, no heap allocation)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -218,71 +218,64 @@ pub fn ks_cr3bp_rhs_batch(
 /// Returns None if the spacecraft is at the Moon's center.
 pub fn cartesian_to_ks(cart: &[f64; 6], mu: f64, t0: f64) -> Option<[f64; 9]> {
     let mu1 = 1.0 - mu;
-
-    // Moon-relative position ρ = r − r_{P2}
+ 
     let xi   = cart[0] - mu1;
     let eta  = cart[1];
     let zeta = cart[2];
     let vx   = cart[3];
     let vy   = cart[4];
     let vz   = cart[5];
-
+ 
     let r2 = (xi*xi + eta*eta + zeta*zeta).sqrt();
     if r2 < 1e-300 { return None; }
-
-    // Inverse KS map with canonical fiber u₃ = 0:
-    //   u₀ = sqrt((r₂ + ξ)/2)
-    //   u₁ = η / (2u₀)
-    //   u₂ = ζ / (2u₀)
-    //   u₃ = 0
-    // Valid when ξ > −r₂ (i.e. u₀² = (r₂+ξ)/2 > 0).
-    // Alternate branch (ξ ≈ −r₂): pivot on u₁.
+ 
     let u0_sq = (r2 + xi) / 2.0;
-    let (u0, u1, u2, u3);
-
-    if u0_sq > 1e-100 * r2 {
-        u0 = u0_sq.sqrt();
-        let two_u0 = 2.0 * u0;
-        u1 = eta / two_u0;
-        u2 = zeta / two_u0;
-        u3 = 0.0_f64;
+    let u1_sq = (r2 - xi) / 2.0;
+ 
+    let u_arr: [f64; 4];
+ 
+    if u0_sq >= u1_sq {
+        // ── Primary branch: pivot u₀, u₃ = 0 ────────────────────────────────
+        let u0 = u0_sq.sqrt();
+        if u0 < 1e-200 {
+            // Exact degenerate case r = (−r₂, 0, 0) — both η and ζ are zero.
+            let u1 = u1_sq.sqrt().max(f64::MIN_POSITIVE);
+            u_arr = [0.0, u1, 0.0, 0.0];
+        } else {
+            let two_u0 = 2.0 * u0;
+            u_arr = [u0, eta / two_u0, zeta / two_u0, 0.0];
+        }
     } else {
-        // ξ ≈ −r₂: use alternate fiber with u₀ = 0
-        let u1_sq = (r2 - xi) / 2.0;
-        u1 = u1_sq.sqrt().max(1e-150);
-        u0 = 0.0_f64;
-        u2 = 0.0_f64;
-        u3 = eta / (2.0 * u1);  // from η = 2u₁u₃ with u₀=u₂=0
-        // Check: ζ = 2(u₀u₂+u₁u₃) = 2u₁u₃ only if u₀=u₂=0
-        // This is approximate — use Gram-Schmidt for production
-        let _ = zeta;
+        // ── Alternate branch: pivot u₁, u₂ = 0 ──────────────────────────────
+        // Used when ξ < 0 (spacecraft in the −x hemisphere relative to Moon).
+        let u1 = u1_sq.sqrt();
+        if u1 < 1e-200 {
+            // Exact degenerate r = (r₂, 0, 0) — covered by primary.
+            let u0 = u0_sq.sqrt().max(f64::MIN_POSITIVE);
+            u_arr = [u0, 0.0, 0.0, 0.0];
+        } else {
+            let two_u1 = 2.0 * u1;
+            // u₀ = η/(2u₁), u₂ = 0, u₃ = ζ/(2u₁)
+            u_arr = [eta / two_u1, u1, 0.0, zeta / two_u1];
+        }
     }
-
-    let u_arr = [u0, u1, u2, u3];
-    let u2_norm = u0*u0 + u1*u1 + u2*u2 + u3*u3;
-
-    // Physical velocity → KS velocity
-    // ρ̇ = 2 L(u) p / |u|²  ⟹  Lᵀ(u) ρ̇_ext = 2p / |u|² · |u|²/Lᵀ
-    // p = |u|²/2 · Lᵀ(u) · (vx, vy, vz, 0)ᵀ
-    // p = (1/2) · Lᵀ(u) · (vx,vy,vz,0)
-    // Derivation: ρ̇ = 2L(u)p/|u|², so L(u)p = |u|²/2 · ρ̇.
-    // Apply Lᵀ: Lᵀ(u)L(u)p = |u|²/2 · Lᵀ(u)ρ̇.
-    // Since Lᵀ(u)L(u) = |u|²·I₄ (KS orthogonality property):
-    //   |u|²·p = |u|²/2 · Lᵀ(u)ρ̇  ⟹  p = (1/2)·Lᵀ(u)·ρ̇_ext
+ 
+    // KS velocity: p = (1/2)·Lᵀ(u)·(vx, vy, vz, 0)
+    // Derivation: ρ̇ = 2L(u)p/|u|² → p = (|u|²/2)·Lᵀ(u)ρ̇/|u|² = (1/2)·Lᵀ(u)ρ̇
     let lt_v = lt_w3(&u_arr, vx, vy, vz);
-
     let p_arr = [
         0.5 * lt_v[0],
         0.5 * lt_v[1],
         0.5 * lt_v[2],
         0.5 * lt_v[3],
     ];
-
-    Some([u_arr[0], u_arr[1], u_arr[2], u_arr[3],
-          p_arr[0], p_arr[1], p_arr[2], p_arr[3],
-          t0])
+ 
+    Some([
+        u_arr[0], u_arr[1], u_arr[2], u_arr[3],
+        p_arr[0], p_arr[1], p_arr[2], p_arr[3],
+        t0,
+    ])
 }
-
 /// Convert KS state [u,p,t] to CR3BP Cartesian state [x,y,z,vx,vy,vz].
 pub fn ks_to_cartesian(ks: &[f64; 9], mu: f64) -> [f64; 6] {
     let mu1 = 1.0 - mu;
@@ -315,7 +308,6 @@ pub fn ks_jacobi(ks_state: &[f64; 9], mu: f64) -> f64 {
 
 /// Compute the KS Jacobi error: |C_J(current) − C_J(initial)|
 pub fn ks_jacobi_error(traj: &Trajectory, x0_ks: &[f64; 9], mu: f64) -> f64 {
-    use crate::chebyshev::clenshaw;
     let cj0 = ks_jacobi(x0_ks, mu);
     let mut max_err = 0.0f64;
     for seg in &traj.segments {
@@ -386,7 +378,6 @@ pub fn propagate_ks_cr3bp(
     // Extract final KS state
     let n_seg = traj.segments.len();
     let final_ks: [f64; 9] = if n_seg > 0 {
-        use crate::chebyshev::clenshaw;
         let seg = traj.segments.last().unwrap();
         std::array::from_fn(|i| {
             let row = Array1::from_vec(seg.cheb_coeffs.row(i).to_vec());
@@ -518,7 +509,7 @@ mod tests {
     #[test]
     fn test_jacobi_conservation_short_arc() {
         // Propagate a short arc and check Jacobi constant is preserved
-        use crate::picard::PicardConfig;
+        use crate::solvers::picard::PicardConfig;
         let mu = 0.01215_f64;
         let mu1 = 1.0 - mu;
         // Spacecraft near Moon's L2 vicinity at r₂ ≈ 0.15

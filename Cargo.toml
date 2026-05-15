@@ -16,6 +16,21 @@ rustdct = "0.7"
 lazy_static = "1.4"
 nalgebra = "0.32"
 num-complex = "0.4"
+tonic        = "0.10"
+prost        = "0.12"
+tokio        = { version = "1.35", features = ["macros", "rt-multi-thread"] }
+rayon        = "1.8"
+
+[build-dependencies]
+tonic-build  = "0.10"
+
+[[bin]]
+name = "worker"
+path = "src/bin/worker.rs"
+required-features = ["grpc-worker"]
+
+[features]
+grpc-worker = ["tonic", "prost", "tokio", "rayon"]
 
 [build-system]
 requires = ["maturin>=1.0,<2.0"]

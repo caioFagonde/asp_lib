@@ -5,12 +5,17 @@ import numpy as np
 # Note: Requires generating the pb2 files via protoc:
 # python -m grpc_tools.protoc -I../go_services/proto --python_out=. --grpc_python_out=. asp_cluster.proto
 try:
-    import asp_cluster_pb2 as pb2
-    import asp_cluster_pb2_grpc as pb2_grpc
+    # Try relative import first (works if generated correctly in package)
+    from . import asp_cluster_pb2 as pb2
+    from . import asp_cluster_pb2_grpc as pb2_grpc
 except ImportError:
-    pb2 = None
-    pb2_grpc = None
-
+    try:
+        # Fallback to absolute import
+        import asp_cluster_pb2 as pb2
+        import asp_cluster_pb2_grpc as pb2_grpc
+    except ImportError:
+        pb2 = None
+        pb2_grpc = None
 class ClusterDispatcher:
     """
     gRPC Client to dispatch massive trajectory batches to the Go microservices

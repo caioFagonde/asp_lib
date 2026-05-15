@@ -54,9 +54,8 @@ pub fn compute_tad_cpe_2d(
 
     // 4. Compute Gelfand-Yaglom Prefactor (Stokes Constant S_*)
     // S_* = (r_hbr * sigma_perp) / (||r_miss|| * sigma_r * A_FW * sqrt(2*pi))
-    let s_star = (r_hbr * sigma_perp) / (r_miss_norm * sigma_r * a_fw_scalar * (2.0 * std::f64::consts::PI).sqrt());
-
-    // 5. Thermal Alien Derivative Probability Evaluation
+    let s_star = (r_hbr * sigma_perp) 
+           / (r_miss_norm * sigma_r * (2.0 * std::f64::consts::PI).sqrt());
     let p_c = s_star * (-a_fw_scalar).exp();
 
     (p_c, a_fw_scalar, s_star)

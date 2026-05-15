@@ -164,20 +164,23 @@ def test_milestone_7_jit_compilation_and_propagation():
     assert func_ptr > 0, "Failed to extract valid function pointer from JIT library."
     
     # 3. Configure the Spectral Picard Solver
-    config = asp_core.PicardConfig()
-    config.n_cheb = 32
-    config.tol = 1e-11
-    config.certify = True
+    n_cheb = 32
+    tol = 1e-11
+    certify = True
     
     x0 = [1.0, 0.0]
-    t_final = 2.0 * sp.pi.evalf() # One approximate period
+    t_final = float(2.0 * sp.pi.evalf()) # Cast SymPy Float to standard Python float
     
     # 4. Execute the bare-metal Rust propagation
     result = asp_core.propagate_custom_c_abi(
-        func_ptr_val=func_ptr,
         x0=x0,
         t_final=t_final,
-        config_py=config
+        rhs_ptr_val=func_ptr["rhs"],
+        jac_ptr_val=func_ptr.get("jac"),
+        uk_ptr_val=func_ptr.get("uk"),
+        n_cheb=n_cheb,
+        tol=tol,
+        certify=certify
     )
     
     assert result.n_segments > 0, "Picard solver failed to produce segments."

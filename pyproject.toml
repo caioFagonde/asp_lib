@@ -16,6 +16,13 @@ dependencies = [
     "protobuf>=4.21"
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "grpcio-tools>=1.50"
+]
+
 [tool.maturin]
 features = ["pyo3/extension-module"]
 python-source = "python"
