@@ -199,9 +199,16 @@ pub fn robust_pade(coeffs: &[Complex<f64>]) -> (Vec<Complex<f64>>, Vec<Complex<f
     let svd  = t_eq.svd(true, true);
     let v_t  = svd.v_t.expect("SVD failed to compute V^T — degenerate input");
 
-    // The null vector of T corresponds to the LAST row of V^T
-    // (smallest singular value → rightmost column of V, last row of V^T)
-    let q: Vec<Complex<f64>> = (0..=m).map(|j| v_t[(m, j)].conj()).collect();
+    // The null / near-null direction is taken from the LAST AVAILABLE row of
+    // V^T. With thin SVD on an m x (m+1) Toeplitz matrix, V^T can be m x (m+1),
+    // so indexing row `m` would be out of bounds.
+    let v_last_row = v_t.nrows().saturating_sub(1);
+    let mut q: Vec<Complex<f64>> = (0..v_t.ncols()).map(|j| v_t[(v_last_row, j)].conj()).collect();
+    if q.len() < m + 1 {
+        q.resize(m + 1, Complex::new(0.0, 0.0));
+    } else if q.len() > m + 1 {
+        q.truncate(m + 1);
+    }
     // Note: the frob normalisation cancels in the null vector; no need to
     // de-scale Q (Q is determined up to a global scalar by the SVD anyway).
 
