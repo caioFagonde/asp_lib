@@ -41,25 +41,28 @@ impl OrbitDispatch for AspWorker {
 
         // Offload Rayon CPU work to a dedicated blocking thread pool
         let results = tokio::task::spawn_blocking(move || {
-            initial_states
-                .into_par_iter()
-                .map(|state_vec| {
-                    let x0 = Array1::from_vec(state_vec.components.clone());
-                    let cj0 = jacobi_constant(&x0, mu);
-                    let (traj, cj_err) = propagate_cr3bp(&x0, t_final, mu, &config);
-                    let final_state = traj.final_state().map(|a| a.to_vec()).unwrap_or_default();
-                    let nk_bound_max = traj.segments.iter()
-                        .map(|s| s.nk_bound.unwrap_or(0.0))
-                        .fold(0.0f64, f64::max);
-                    TrajectoryResult {
-                        final_state,
-                        jacobi_error: cj_err,
-                        nk_bound: nk_bound_max,
-                        is_certified: nk_bound_max > 0.0 && nk_bound_max < 1.0,
-                        segments_used: traj.total_segments() as i32,
-                    }
-                })
-                .collect::<Vec<_>>()
+            let pool = rayon::ThreadPoolBuilder::new().build().unwrap();
+            pool.install(|| {
+                initial_states
+                    .into_par_iter()
+                    .map(|state_vec| {
+                        let x0 = Array1::from_vec(state_vec.components.clone());
+                        let cj0 = jacobi_constant(&x0, mu);
+                        let (traj, cj_err) = propagate_cr3bp(&x0, t_final, mu, &config);
+                        let final_state = traj.final_state().map(|a| a.to_vec()).unwrap_or_default();
+                        let nk_bound_max = traj.segments.iter()
+                            .map(|s| s.nk_bound.unwrap_or(0.0))
+                            .fold(0.0f64, f64::max);
+                        TrajectoryResult {
+                            final_state,
+                            jacobi_error: cj_err,
+                            nk_bound: nk_bound_max,
+                            is_certified: nk_bound_max > 0.0 && nk_bound_max < 1.0,
+                            segments_used: traj.total_segments() as i32,
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            })
         })
         .await
         .map_err(|e| Status::internal(format!("Worker panic: {e}")))?;

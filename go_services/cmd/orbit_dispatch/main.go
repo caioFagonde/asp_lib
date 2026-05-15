@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"time"
 
 	pb "asp_cluster/pb"
 	"google.golang.org/grpc"
@@ -20,9 +21,12 @@ type dispatchServer struct {
 func (s *dispatchServer) PropagateBatch(ctx context.Context, req *pb.PropagateBatchRequest) (*pb.PropagateBatchResponse, error) {
 	log.Printf("Orchestrator received Job %s. Forwarding %d trajectories to Rust worker...", req.JobId, len(req.InitialStates))
 
+	workerCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	// Forward the request to the Rust worker node
 	// In a full production system, this would chunk the array and fan out to multiple workers
-	res, err := s.workerClient.PropagateBatch(ctx, req)
+	res, err := s.workerClient.PropagateBatch(workerCtx, req)
 	if err != nil {
 		log.Printf("Error calling Rust worker: %v", err)
 		return nil, err

@@ -13,6 +13,12 @@ services:
       - RUST_WORKER_URL=rust_worker:50052
     depends_on:
       - rust_worker
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
 
   rust_worker:
     build:
@@ -22,6 +28,17 @@ services:
       - "50052"
     networks:
       - asp_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "kill", "-0", "1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 2G
 
 networks:
   asp_net:

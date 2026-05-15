@@ -1,4 +1,4 @@
-// src/borel_pade.rs
+// src/math/borel_pade.rs
 //
 // The Borel-Padé-Laplace Engine
 // ======================================================================
@@ -201,7 +201,6 @@ pub fn extract_singularities(raw_coeffs: &[f64]) -> Vec<f64> {
     physical_poles.sort_by(|a, b| a.partial_cmp(b).unwrap());
     physical_poles
 }
-// src/math/borel_pade.rs (Additions)
 
 /// Computes the Lateral Borel Sum $\mathcal{S}^{\pm\epsilon}$.
 /// Rotates the Laplace integration contour by angle `epsilon` in the complex plane
@@ -255,4 +254,36 @@ pub fn median_resummation(
     let m_val = (s_plus + s_minus) / 2.0;
     
     m_val.re
+}
+
+/// Auto-ε median resummation (Theory Change 3).
+/// Detects the Stokes line direction from the leading Borel singularity
+/// and chooses ε automatically to straddle it.
+pub fn auto_median_resummation(raw_coeffs: &[f64], z_val: f64, n_gl: usize) -> f64 {
+    let mut borel_coeffs = Vec::with_capacity(raw_coeffs.len());
+    let mut fact = 1.0;
+    for (n, &c) in raw_coeffs.iter().enumerate() {
+        if n > 0 { fact *= n as f64; }
+        borel_coeffs.push(Complex::new(c / fact, 0.0));
+    }
+
+    let (_, q) = robust_pade(&borel_coeffs);
+    let q_roots = polynomial_roots(&q);
+    
+    let mut min_mag = f64::MAX;
+    let mut dominant_angle = 0.0;
+    for root in q_roots {
+        let mag = root.norm();
+        if mag > 1e-10 && mag < min_mag {
+            min_mag = mag;
+            dominant_angle = root.im.atan2(root.re);
+        }
+    }
+    if min_mag == f64::MAX { dominant_angle = 0.0; }
+    
+    let eps = 1e-5;
+    let s_plus = lateral_borel_sum(raw_coeffs, z_val, dominant_angle + eps, n_gl);
+    let s_minus = lateral_borel_sum(raw_coeffs, z_val, dominant_angle - eps, n_gl);
+    
+    ((s_plus + s_minus) / 2.0).re
 }

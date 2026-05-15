@@ -442,7 +442,8 @@ pub fn ks_inverse(r: &[f64; 3]) -> Option<[f64; 4]> {
         // Use u[1] = sqrt((|r| - r[0]) / 2) as pivot instead
         let u1_sq = (r_norm - r[0]) / 2.0;
         let u1 = u1_sq.sqrt().max(1e-300);
-        return Some([0.0, u1, r[2] / (2.0 * u1), r[1] / (2.0 * u1)]);
+        let two_u1 = 2.0 * u1;
+        return Some([r[1] / two_u1, u1, 0.0, r[2] / two_u1]);
     }
     let two_u0 = 2.0 * u0;
     Some([u0, r[1] / two_u0, r[2] / two_u0, 0.0])
@@ -466,19 +467,15 @@ pub fn lc_inverse(r: &[f64; 2]) -> Option<[f64; 2]> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::array;
 
     #[test]
     fn test_ks_roundtrip() {
-        // Test: ks_map(ks_inverse(r)) == r  and  |ks_inverse(r)|^2 == |r|
-        // Note: the canonical inverse uses u[3]=0, which satisfies the KS constraint
-        // ψ = u[0]*u[3] - u[1]*u[2] = 0 only when u[1]*u[2]=0.
-        // For general r, we use ks_inverse_constrained() for astrodynamical ICs.
         let test_cases = [
             [1.5_f64, -0.7, 0.3],
             [0.5, 0.0, 0.0],   // along x-axis: u3=0 gives ψ=0 trivially
             [1.0, 0.5, 0.0],   // in xy-plane: u2=0 gives ψ=0
             [0.1, 0.2, 0.3],
+            [-1.0, 0.0, 0.0],  // triggers alternate branch
         ];
         for r in &test_cases {
             let r_norm = (r[0]*r[0]+r[1]*r[1]+r[2]*r[2]).sqrt();

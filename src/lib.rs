@@ -235,7 +235,7 @@ fn resurgent_pseudoinverse_py(
         Python::with_gil(|py2| {
             let result  = a_func.call1(py2, (eps,)).unwrap();
             let pyarray: &numpy::PyArray2<f64> = result.extract(py2).unwrap();
-            let arr = pyarray.as_array();
+            let arr = unsafe { pyarray.as_array() };
             let mut mat = nalgebra::DMatrix::zeros(arr.nrows(), arr.ncols());
             for i in 0..arr.nrows() {
                 for j in 0..arr.ncols() { mat[(i, j)] = arr[[i, j]]; }
